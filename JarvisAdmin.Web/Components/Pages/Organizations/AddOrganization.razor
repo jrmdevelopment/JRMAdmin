@@ -1,0 +1,538 @@
+@page "/organizations/add"
+@using JarvisAdmin.Web.Data.Jarvis
+@using JarvisAdmin.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject OrganizationService OrgService
+
+<PageTitle>Add Organization - Jarvis Admin</PageTitle>
+
+<h1>Add Organization</h1>
+<p class="text-muted">Create a new organization. Fields marked <span class="text-danger">*</span> are required.</p>
+
+@if (_successMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@_successMessage</div>
+}
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+<RadzenFieldset Text="Organization and Contact Information" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label d-block">Organization Name <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.OrganizationName" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Status</label>
+            <RadzenDropDown TValue="string" Data="@_statusOptions" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="_model.Status" class="w-100" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label d-block">Address <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.OrganizationAddr" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">City <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.OrganizationCity" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-md-1">
+            <label class="form-label d-block">State <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.OrganizationSt" MaxLength="2" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Zip <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.OrganizationZip" MaxLength="10" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Contact Name <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.ContactName" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Contact Phone <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.ContactPhone" MaxLength="12" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Contact Email <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.ContactEmailAddr" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">After-Hours Phone</label>
+            <RadzenTextBox @bind-Value="_model.AfterhoursPhone" MaxLength="12" class="w-100" />
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2 pt-4">
+            <RadzenCheckBox @bind-Value="_model.RequirePhysicalAddr" TValue="bool" Name="chkRequirePhysicalAddr" />
+            <label class="mb-0">Require Physical Address</label>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Name For Lookup</label>
+            <RadzenTextBox @bind-Value="_model.NameForLookup" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Domain Name</label>
+            <RadzenTextBox @bind-Value="_model.DomainName" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Time Zone</label>
+            <RadzenDropDown TValue="int" Data="@_timeZoneOptions" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="_model.TimeZone" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Tax ID</label>
+            <RadzenTextBox @bind-Value="_model.TaxId" MaxLength="20" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Standings Type <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.StandingsType" MaxLength="6" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">POS Screen Name</label>
+            <RadzenTextBox @bind-Value="_model.PosscreenName" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">Internal Notes (Jarvis Comments)</label>
+            <RadzenTextArea @bind-Value="_model.JarvisComments" Rows="3" class="w-100" />
+        </div>
+    </div>
+</RadzenFieldset>
+
+<RadzenFieldset Text="Email &amp; Notifications" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label d-block">From Email Address</label>
+            <RadzenTextBox @bind-Value="_model.FromEmailAddress" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">From Email Password</label>
+            <RadzenPassword @bind-Value="_model.FromEmailPw" MaxLength="20" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Report Email</label>
+            <RadzenTextBox @bind-Value="_model.ReportEmail" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Report Phone</label>
+            <RadzenTextBox @bind-Value="_model.ReportPhone" MaxLength="12" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Game Time Text Notification (minutes before)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="_model.GameTimeTextNotificationMinutes" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Practice Time Text Notification (minutes before)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="_model.PracticeTimeTextNotificationMinutes" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Facility Reservation Text Notification (minutes before)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="_model.FacilityResvTextNotificationMinutes" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Facility Reservation Invoice Reminder (days)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="_model.FacilityResvNbrDaysInvoiceReminder" class="w-100" />
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.TextGameReminders" TValue="bool" Name="chkTextGameReminders" />
+            <label class="mb-0">Text Game Reminders</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.TextPracticeReminders" TValue="bool" Name="chkTextPracticeReminders" />
+            <label class="mb-0">Text Practice Reminders</label>
+        </div>
+    </div>
+</RadzenFieldset>
+
+<RadzenFieldset Text="Registration Settings" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.RequirePaymentWhenRegistering" TValue="bool" Name="chkRequirePaymentWhenRegistering" />
+            <label class="mb-0">Require Payment When Registering</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.RestrictUnpaidRegistrants" TValue="bool" Name="chkRestrictUnpaidRegistrants" />
+            <label class="mb-0">Restrict Unpaid Registrants</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.RequireParticipantMiddleName" TValue="bool" Name="chkRequireParticipantMiddleName" />
+            <label class="mb-0">Require Participant Middle Name</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.OnlineApplications" TValue="bool" Name="chkOnlineApplications" />
+            <label class="mb-0">Online Applications</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.OnlinePracticeApproval" TValue="bool" Name="chkOnlinePracticeApproval" />
+            <label class="mb-0">Online Practice Approval</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.OnlineFacilityApproval" TValue="bool" Name="chkOnlineFacilityApproval" />
+            <label class="mb-0">Online Facility Approval</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.ExternalTeamPractice" TValue="bool" Name="chkExternalTeamPractice" />
+            <label class="mb-0">External Team Practice</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.ValidateResidencyByAddr" TValue="bool" Name="chkValidateResidencyByAddr" />
+            <label class="mb-0">Validate Residency By Address</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.ValidateResidencyByZip" TValue="bool" Name="chkValidateResidencyByZip" />
+            <label class="mb-0">Validate Residency By Zip</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.MedicalReleaseScreen" TValue="bool" Name="chkMedicalReleaseScreen" />
+            <label class="mb-0">Medical Release Screen</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.UseDocumentManager" TValue="bool" Name="chkUseDocumentManager" />
+            <label class="mb-0">Use Document Manager</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.MilitaryDiscount" TValue="bool" Name="chkMilitaryDiscount" />
+            <label class="mb-0">Military Discount</label>
+        </div>
+    </div>
+</RadzenFieldset>
+
+<RadzenFieldset Text="Programs &amp; Modules" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.HaveAftercarePrograms" TValue="bool" Name="chkHaveAftercarePrograms" />
+            <label class="mb-0">Have Aftercare Programs</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.TeamRegPmtReqd" TValue="bool" Name="chkTeamRegPmtReqd" />
+            <label class="mb-0">Require Payment for Team Registration</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.CoachApplications" TValue="bool" Name="chkCoachApplications" />
+            <label class="mb-0">Coach Applications</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.VolunteerApplications" TValue="bool" Name="chkVolunteerApplications" />
+            <label class="mb-0">Volunteer Applications</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.UseGrantFunding" TValue="bool" Name="chkUseGrantFunding" />
+            <label class="mb-0">Use Grant Funding</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.OfferScholarships" TValue="bool" Name="chkOfferScholarships" />
+            <label class="mb-0">Offer Scholarships</label>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label d-block">Background Check URL</label>
+            <RadzenTextBox @bind-Value="_model.BackgroundCheckUrl" MaxLength="100" class="w-100" />
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.UseMembershipSystem" TValue="bool" Name="chkUseMembershipSystem" />
+            <label class="mb-0">Use Membership System</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.UseSeasonPassSystem" TValue="bool" Name="chkUseSeasonPassSystem" />
+            <label class="mb-0">Use Season Pass System</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.OnlineSeasonPass" TValue="bool" Name="chkOnlineSeasonPass" />
+            <label class="mb-0">Online Season Pass</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.SeasonPassAccount" TValue="bool" Name="chkSeasonPassAccount" />
+            <label class="mb-0">Season Pass Account</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.OnlineReserveFacilities" TValue="bool" Name="chkOnlineReserveFacilities" />
+            <label class="mb-0">Online Reserve Facilities</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.UseShifts" TValue="bool" Name="chkUseShifts" />
+            <label class="mb-0">Use Shifts</label>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Shift Location Type</label>
+            <RadzenDropDown TValue="string" Data="@_shiftLocationTypeOptions" AllowClear="true"
+                @bind-Value="_model.ShiftLocationType" class="w-100" />
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.AutoReopenFields" TValue="bool" Name="chkAutoReopenFields" />
+            <label class="mb-0">Auto Reopen Fields</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.ShiftAutoendMidnight" TValue="bool" Name="chkShiftAutoendMidnight" />
+            <label class="mb-0">Shift Auto-End at Midnight</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.RevenueCodeRequired" TValue="bool" Name="chkRevenueCodeRequired" />
+            <label class="mb-0">Revenue Code Required</label>
+        </div>
+    </div>
+</RadzenFieldset>
+
+<RadzenFieldset Text="Billing Settings" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-2">
+            <label class="form-label d-block">Fee Structure <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_model.FeeStructure" MaxLength="10" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Monthly Billed Amount</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_model.MonthlyBilledAmount" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">League Mgmt Price</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_model.LeagueMgmtPrice" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Activity Price</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_model.ActivityPrice" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Team Price</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_model.TeamPrice" class="w-100" />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label d-block">Payment Gateway</label>
+            <RadzenDropDown TValue="string" Data="@_gatewayOptions" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="_model.GatewayUsed" class="w-100" />
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.SwipeMachine" TValue="bool" Name="chkSwipeMachine" />
+            <label class="mb-0">Swipe Machine</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.UseEmvterminal" TValue="bool" Name="chkUseEmvterminal" />
+            <label class="mb-0">Use EMV Terminal</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.AllowAmex" TValue="bool" Name="chkAllowAmex" />
+            <label class="mb-0">Allow American Express</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.AllowDisc" TValue="bool" Name="chkAllowDisc" />
+            <label class="mb-0">Allow Discover</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.PayOnline" TValue="bool" Name="chkPayOnline" />
+            <label class="mb-0">Allow Online Payment</label>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Merchant % to Registrant</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.MerchantPctToRegistrant" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Swipe % to Registrant</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.SwipePctToRegistrant" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Minimum Convenience Fee</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.MinimumConvenienceFee" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Membership Fee Type</label>
+            <RadzenDropDown TValue="string" Data="@_membershipFlatOrPercentOptions" AllowClear="true"
+                @bind-Value="_model.MembershipFlatOrPercent" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Membership Flat Rate</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.MembershipFlatRate" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Daily Percentage</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.DailyPercentage" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Membership Percent Rate</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.MembershipPctRate" class="w-100" />
+        </div>
+    </div>
+</RadzenFieldset>
+
+<RadzenFieldset Text="Tax &amp; Finance" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label d-block">Facility Sales Tax %</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.FacilitySalesTax" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">POS Sales Tax %</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_model.PossalesTax" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Season Pass Sales Tax %</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.SeasonPassSalesTax" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Registration Sales Tax %</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_model.RegistrationSalesTax" class="w-100" />
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.TylerFinanceSystem" TValue="bool" Name="chkTylerFinanceSystem" />
+            <label class="mb-0">Tyler Finance System</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.CaselleFinanceSystem" TValue="bool" Name="chkCaselleFinanceSystem" />
+            <label class="mb-0">Caselle Finance System</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.FeedCashChecks" TValue="bool" Name="chkFeedCashChecks" />
+            <label class="mb-0">Feed Cash/Checks</label>
+        </div>
+        <div class="col-md-3 d-flex align-items-center gap-2">
+            <RadzenCheckBox @bind-Value="_model.BatchCashChecks" TValue="bool" Name="chkBatchCashChecks" />
+            <label class="mb-0">Batch Cash/Checks</label>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">GL/OR Revenue Code</label>
+            <RadzenTextBox @bind-Value="_model.GlorRevenueCode" MaxLength="2" class="w-100" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label d-block">Account Credit Revenue Code</label>
+            <RadzenTextBox @bind-Value="_model.AccountCreditRevenueCode" MaxLength="20" class="w-100" />
+        </div>
+    </div>
+</RadzenFieldset>
+
+<RadzenFieldset Text="Documents &amp; Agreements" class="mb-3">
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label d-block">Fee Schedule File</label>
+            <RadzenTextBox @bind-Value="_model.FeeScheduleFile" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Payment File</label>
+            <RadzenTextBox @bind-Value="_model.PaymentFile" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Service Agreement File</label>
+            <RadzenTextBox @bind-Value="_model.ServiceAgreementFile" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Editor CSS File</label>
+            <RadzenTextBox @bind-Value="_model.EditorCssfile" MaxLength="20" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Image Editor Path</label>
+            <RadzenTextBox @bind-Value="_model.ImageEditorPath" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Document Path</label>
+            <RadzenTextBox @bind-Value="_model.DocumentPath" MaxLength="100" class="w-100" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">Player Terms and Conditions</label>
+            <RadzenTextArea @bind-Value="_model.PlayerTermsAndConditions" Rows="3" class="w-100" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">Facility Rental Agreement</label>
+            <RadzenTextArea @bind-Value="_model.FacilityRentalAgreement" Rows="3" class="w-100" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">Facility Alcohol Agreement</label>
+            <RadzenTextArea @bind-Value="_model.FacilityAlcoholAgreement" Rows="3" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Name of Acceptor</label>
+            <RadzenTextBox @bind-Value="_model.NameOfAcceptor" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Username That Accepted Agreement</label>
+            <RadzenTextBox @bind-Value="_model.UserNameAcceptAgreement" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-md-2 d-flex align-items-center gap-2 pt-4">
+            <RadzenCheckBox @bind-Value="_model.Older18" TValue="bool" Name="chkOlder18" />
+            <label class="mb-0">Acceptor Over 18</label>
+        </div>
+        <div class="col-md-2 d-flex align-items-center gap-2 pt-4">
+            <RadzenCheckBox @bind-Value="_model.AcceptAgreement" TValue="bool" Name="chkAcceptAgreement" />
+            <label class="mb-0">Agreement Accepted</label>
+        </div>
+    </div>
+</RadzenFieldset>
+
+<div class="d-flex gap-2 mb-4">
+    <RadzenButton Text="Save Organization" ButtonStyle="ButtonStyle.Primary" Click="@SaveAsync" IsBusy="@_saving" />
+    <RadzenButton Text="Reset" ButtonStyle="ButtonStyle.Light" Click="@ResetForm" Disabled="@_saving" />
+</div>
+
+@code {
+    private sealed record TextOption(string Text, string Value);
+    private sealed record TimeZoneOption(string Text, int Value);
+
+    private static readonly List<TextOption> _statusOptions =
+    [
+        new("Active", "A"),
+        new("Inactive", "I"),
+    ];
+
+    // TimeZone is an offset index used throughout the legacy Jarvis stored procedures
+    // (1=Eastern, 2=Central, 3=Mountain, 4=Pacific), not a raw UTC offset.
+    private static readonly List<TimeZoneOption> _timeZoneOptions =
+    [
+        new("Eastern", 1),
+        new("Central", 2),
+        new("Mountain", 3),
+        new("Pacific", 4),
+    ];
+
+    private static readonly List<TextOption> _gatewayOptions =
+    [
+        new("AuthorizeNET", "AuthorizeNET"),
+        new("MXGateway", "MXGateway"),
+    ];
+
+    private static readonly List<string> _shiftLocationTypeOptions = ["Single", "Multiple"];
+    private static readonly List<string> _membershipFlatOrPercentOptions = ["Flat", "Percent"];
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private Organization _model = OrganizationService.CreateNewOrganization();
+    private bool _saving;
+    private string? _error;
+    private string? _successMessage;
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _successMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_model.OrganizationName) ||
+            string.IsNullOrWhiteSpace(_model.OrganizationAddr) ||
+            string.IsNullOrWhiteSpace(_model.OrganizationCity) ||
+            string.IsNullOrWhiteSpace(_model.OrganizationSt) ||
+            string.IsNullOrWhiteSpace(_model.OrganizationZip) ||
+            string.IsNullOrWhiteSpace(_model.ContactName) ||
+            string.IsNullOrWhiteSpace(_model.ContactPhone) ||
+            string.IsNullOrWhiteSpace(_model.ContactEmailAddr) ||
+            string.IsNullOrWhiteSpace(_model.FeeStructure) ||
+            string.IsNullOrWhiteSpace(_model.StandingsType))
+        {
+            _error = "Please fill in all required fields (marked *) before saving.";
+            return;
+        }
+
+        _saving = true;
+
+        string? currentUser = null;
+        if (AuthStateTask is not null)
+        {
+            var authState = await AuthStateTask;
+            currentUser = authState.User.Identity?.Name;
+        }
+
+        var created = await OrgService.AddOrganizationAsync(_model, currentUser);
+
+        _successMessage = $"Organization \"{created.OrganizationName}\" created (Key: {created.OrganizationKey}).";
+        _model = OrganizationService.CreateNewOrganization();
+
+        _saving = false;
+    }
+
+    private void ResetForm()
+    {
+        _model = OrganizationService.CreateNewOrganization();
+        _error = null;
+        _successMessage = null;
+    }
+}

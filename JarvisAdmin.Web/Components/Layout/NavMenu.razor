@@ -1,0 +1,23 @@
+<nav class="jarvis-nav">
+    <NavLink href="dashboard" class="jarvis-nav-link" Match="NavLinkMatch.All">Dashboard</NavLink>
+    <div class="jarvis-nav-dropdown">
+        <span class="jarvis-nav-link" tabindex="0">New Organization</span>
+        <div class="jarvis-nav-dropdown-menu">
+            <NavLink href="organizations/add" class="jarvis-nav-dropdown-item">Add Organization</NavLink>
+        </div>
+    </div>
+    <div class="jarvis-nav-dropdown">
+        <NavLink href="databaseintegrity" class="jarvis-nav-link">Database Integrity</NavLink>
+        <div class="jarvis-nav-dropdown-menu">
+            <NavLink href="databasechecks" class="jarvis-nav-dropdown-item">Database Checks</NavLink>
+            <NavLink href="emailstatus" class="jarvis-nav-dropdown-item">Email Status</NavLink>
+        </div>
+    </div>
+    <div class="jarvis-nav-dropdown">
+        <span class="jarvis-nav-link" tabindex="0">MX Checks</span>
+        <div class="jarvis-nav-dropdown-menu">
+            <NavLink href="mxreconciliation" class="jarvis-nav-dropdown-item">Reconciliation</NavLink>
+            <NavLink href="mxcustomervaultlookup" class="jarvis-nav-dropdown-item">Vault Lookup</NavLink>
+        </div>
+    </div>
+</nav>

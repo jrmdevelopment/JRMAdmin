@@ -1,0 +1,33 @@
+@inherits LayoutComponentBase
+
+<AuthorizeView>
+    <Authorized>
+        <header class="jarvis-topbar">
+            <img src="images/jarvis-logo.png" alt="Jarvis" class="jarvis-topbar-logo" />
+            <NavMenu />
+            <div class="jarvis-topbar-user">
+                <span>@context.User.Identity?.Name</span>
+                <form action="Account/Logout" method="post">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="" />
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Log out</button>
+                </form>
+            </div>
+        </header>
+
+        <main class="jarvis-main">
+            @Body
+        </main>
+    </Authorized>
+    <NotAuthorized>
+        @Body
+    </NotAuthorized>
+</AuthorizeView>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+<RadzenComponents />

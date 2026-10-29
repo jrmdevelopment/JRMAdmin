@@ -1,0 +1,1074 @@
+@page "/mxreconciliation"
+@using JarvisAdmin.Web.Services
+@inject MxReconciliationService MxService
+@inject MxPaymentLookupService MxLookupService
+@inject EmvLogAnalysisService EmvLogService
+@inject DialogService DialogService
+
+<PageTitle>MX Reconciliation - Jarvis Admin</PageTitle>
+
+<h1>MX Reconciliation</h1>
+<p class="text-muted">Reconciliation status between MX Merchant batches and Jarvis payment records. Read-only.</p>
+
+@if (_selectedTabIndex is 0 or 1)
+{
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label d-block">Organization</label>
+            <RadzenDropDown TValue="int" Data="@_orgDropdownItems" TextProperty="OrganizationName" ValueProperty="OrganizationKey"
+                @bind-Value="_selectedOrgKey" Change="@OnOrgOrDateChangedAsync" Style="min-width:260px" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Date</label>
+            <RadzenDatePicker TValue="DateTime?" @bind-Value="_selectedDate" Max="@_maxSelectableDate"
+                Change="@(async (DateTime? _) => await OnOrgOrDateChangedAsync())" DateFormat="MM/dd/yyyy" ShowTime="false" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Batch</label>
+            <RadzenDropDown TValue="int?" Data="@_batchOptions" TextProperty="DisplayLabel" ValueProperty="MxmerchantBatchKey"
+                @bind-Value="_selectedBatchKey" AllowClear="true" Placeholder="(All batches)" Style="min-width:320px" />
+        </div>
+        <div class="col-auto">
+            <RadzenButton Text="Apply" Click="@LoadReportAsync" ButtonStyle="ButtonStyle.Primary" />
+        </div>
+    </div>
+}
+else if (_selectedTabIndex == 2)
+{
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label d-block">Organization</label>
+            <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="OrganizationName" ValueProperty="OrganizationKey"
+                @bind-Value="_ccOrgKey" Change="@OnCcFilterChanged" Placeholder="(select an organization)" Style="min-width:260px" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Date</label>
+            <RadzenDatePicker TValue="DateTime?" @bind-Value="_ccDate" Max="@DateTime.Today"
+                Change="@(async (DateTime? _) => await OnCcFilterChanged())" DateFormat="MM/dd/yyyy" ShowTime="false" />
+        </div>
+        <div class="col-auto">
+            <RadzenButton Text="Run" Click="@RunPaidByCreditCardAsync" ButtonStyle="ButtonStyle.Primary" />
+        </div>
+    </div>
+}
+else if (_selectedTabIndex == 3)
+{
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label d-block">Organization</label>
+            <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="OrganizationName" ValueProperty="OrganizationKey"
+                @bind-Value="_mxLookupOrgKey" Placeholder="(select an organization)" Style="min-width:260px" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Reference Nbr</label>
+            <RadzenTextBox @bind-Value="_mxLookupReferenceNbr" Style="min-width:220px" />
+        </div>
+        <div class="col-auto">
+            <RadzenButton Text="Search" Click="@SearchMxLookupAsync" ButtonStyle="ButtonStyle.Primary" />
+        </div>
+    </div>
+}
+else if (_selectedTabIndex == 4)
+{
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label d-block">Organization</label>
+            <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="OrganizationName" ValueProperty="OrganizationKey"
+                @bind-Value="_emvOrgKey" Change="@OnEmvFilterChanged" Placeholder="(select an organization)" Style="min-width:260px" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Date</label>
+            <RadzenDatePicker TValue="DateTime?" @bind-Value="_emvDate" Max="@DateTime.Today" DateFormat="MM/dd/yyyy" ShowTime="false"
+                Change="@(async (DateTime? _) => await OnEmvFilterChanged())" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Time</label>
+            <RadzenDatePicker TValue="DateTime?" @bind-Value="_emvTime" TimeOnly="true" HourFormat="12" DateFormat="h:mm tt" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Time Zone</label>
+            <RadzenDropDown TValue="string" Data="@EmvLogAnalysisService.TimeZones" TextProperty="Label" ValueProperty="Id"
+                @bind-Value="_emvTimeZoneId" Style="min-width:200px" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Amount</label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="_emvAmount" Format="0.00" Min="0" Style="width:140px" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label d-block">Reference #</label>
+            <RadzenTextBox @bind-Value="_emvReferenceNbr" Style="min-width:220px" />
+        </div>
+        <div class="col-auto">
+            <RadzenButton Text="Analyze" Click="@AnalyzeEmvLogsAsync" ButtonStyle="ButtonStyle.Primary" />
+        </div>
+    </div>
+}
+
+<RadzenTabs @bind-SelectedIndex="_selectedTabIndex" Change="@OnTabChanged">
+    <Tabs>
+        <RadzenTabsItem Text="Blank Merchant Id">
+            <p class="text-muted">Jarvis credit card/EMV payment records with no MerchantBatchId(Num) from MX Merchant - all dates except today and yesterday (@_blankMerchantIdRows.Count total).</p>
+            <RadzenDataGrid Data="@_blankMerchantIdRows" TItem="BlankMerchantIdRow" AllowSorting="true" AllowFiltering="true"
+                AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })"
+                IsLoading="@_blankMerchantIdLoading" EmptyText="No blank merchant id records for the selected organization.">
+                <Columns>
+                    <RadzenDataGridColumn TItem="BlankMerchantIdRow" Property="SourceTable" Title="Table" />
+                    <RadzenDataGridColumn TItem="BlankMerchantIdRow" Property="OrganizationName" Title="Organization" />
+                    <RadzenDataGridColumn TItem="BlankMerchantIdRow" Property="RegistrationNbr" Title="Registration Nbr" />
+                    <RadzenDataGridColumn TItem="BlankMerchantIdRow" Property="Amount" Title="Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="BlankMerchantIdRow" Property="TransactionDate" Title="Date" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                    <RadzenDataGridColumn TItem="BlankMerchantIdRow" Property="PaymentType" Title="Payment Type" />
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="Batch Summary">
+            <div class="mb-2 d-flex align-items-center gap-2">
+                <RadzenButton Text="Refresh All" ButtonStyle="ButtonStyle.Secondary" Click="@RefreshAllBatchesAsync"
+                    Disabled="@(_refreshingAllBatches || _batchRows.Count == 0)" />
+                @if (_refreshingAllBatches)
+                {
+                    <span class="text-muted">Refreshing batch @_refreshAllProgress of @_refreshAllTotal...</span>
+                }
+            </div>
+            <RadzenDataGrid Data="@_batchRows" TItem="BatchSummaryRow" AllowSorting="true" AllowFiltering="true"
+                AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })"
+                IsLoading="@_loading" EmptyText="No batches for the selected filters.">
+                <Columns>
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="OrganizationName" Title="Organization" />
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="BatchId" Title="Batch Id" />
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="BatchNumber" Title="Batch Number">
+                        <Template Context="row">
+                            @if (row.BatchNumber is not null)
+                            {
+                                <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowBatchNumberSummaryAsync(row))">@row.BatchNumber</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="BatchOpenDate" Title="Opened" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="BatchCloseDate" Title="Closed" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="MxmerchantAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="JarvisAmount" Title="Jarvis Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="Variance" Title="Variance" TextAlign="TextAlign.Right">
+                        <Template Context="row">
+                            @if (row.Variance != 0)
+                            {
+                                <span class="text-danger fw-semibold" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowVarianceDetailAsync(row))">@row.Variance.ToString("C")</span>
+                            }
+                            else
+                            {
+                                <span>@row.Variance.ToString("C")</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="BatchSummaryRow" Property="DiscrepancyComments" Title="Comments" />
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="Paid by Credit Card">
+            @if (_ccRows.Count > 0)
+            {
+                <p>
+                    <strong>Credit Card Total:</strong> @_ccRows.Sum(r => r.PaymentAmount).ToString("C")
+                    &nbsp;&nbsp;
+                    <strong>Convenience Fee Total:</strong> @_ccRows.Sum(r => r.ConvenienceFee ?? 0m).ToString("C")
+                    &nbsp;&nbsp;
+                    <strong>Total with Convenience Fee:</strong> @_ccRows.Sum(r => r.PaymentAmount + (r.ConvenienceFee ?? 0m)).ToString("C")
+                </p>
+                <div class="row g-3 align-items-end mb-3">
+                    <div class="col-auto">
+                        <label class="form-label d-block">Compare to Batch(es)</label>
+                        <RadzenDropDown TValue="IEnumerable<int>" Multiple="true" Data="@_ccBatchOptions" TextProperty="DisplayLabel" ValueProperty="MxmerchantBatchKey"
+                            @bind-Value="_ccSelectedBatchKeys" Change="@CompareCreditCardToBatchesAsync"
+                            Placeholder="(select one or more batches)" Style="min-width:420px" />
+                    </div>
+                </div>
+                @if (_ccComparisonLoading)
+                {
+                    <p class="text-muted">Comparing...</p>
+                }
+                else if (_ccComparison is not null)
+                {
+                    <p>
+                        <strong>MX Batch Total:</strong> @_ccComparison.MxTotal.ToString("C")
+                        &nbsp;&nbsp;
+                        <strong>Credit Card Total (with Fee):</strong> @_ccComparison.JarvisTotal.ToString("C")
+                        &nbsp;&nbsp;
+                        <strong>Difference:</strong>
+                        <span class="@(_ccComparison.MxTotal != _ccComparison.JarvisTotal ? "text-danger fw-semibold" : "")">
+                            @((_ccComparison.MxTotal - _ccComparison.JarvisTotal).ToString("C"))
+                        </span>
+                    </p>
+                    <p>
+                        <strong>MX Principal:</strong> @_ccComparison.MxPrincipalTotal.ToString("C")
+                        &nbsp;&nbsp;
+                        <strong>Credit Card Principal:</strong> @_ccComparison.JarvisPrincipalTotal.ToString("C")
+                        &nbsp;&nbsp;
+                        <strong>Difference:</strong>
+                        <span class="@(Math.Abs(_ccComparison.MxPrincipalTotal - _ccComparison.JarvisPrincipalTotal) > 0.01m ? "text-danger fw-semibold" : "")">@((_ccComparison.MxPrincipalTotal - _ccComparison.JarvisPrincipalTotal).ToString("C"))</span>
+                    </p>
+                    <p>
+                        <strong>MX Convenience Fee (3% est.):</strong> @_ccComparison.MxFeeTotal.ToString("C")
+                        &nbsp;&nbsp;
+                        <strong>Credit Card Convenience Fee:</strong> @_ccComparison.JarvisFeeTotal.ToString("C")
+                        &nbsp;&nbsp;
+                        <strong>Difference:</strong>
+                        <span class="@(Math.Abs(_ccComparison.MxFeeTotal - _ccComparison.JarvisFeeTotal) > 0.01m ? "text-danger fw-semibold" : "")">@((_ccComparison.MxFeeTotal - _ccComparison.JarvisFeeTotal).ToString("C"))</span>
+                    </p>
+                    @if (_ccComparison.MxOnly.Count > 0 || _ccComparison.JarvisOnly.Count > 0 || _ccComparison.Mismatched.Count > 0)
+                    {
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <h6>MX Only (@_ccComparison.MxOnly.Count)</h6>
+                                <RadzenDataGrid Data="@_ccComparison.MxOnly" TItem="VarianceRow" AllowSorting="true"
+                                    AllowPaging="true" PageSize="10" EmptyText="None">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr" />
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="MxAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                    </Columns>
+                                </RadzenDataGrid>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Jarvis Only (@_ccComparison.JarvisOnly.Count)</h6>
+                                <RadzenDataGrid Data="@_ccComparison.JarvisOnly" TItem="VarianceRow" AllowSorting="true"
+                                    AllowPaging="true" PageSize="10" EmptyText="None">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
+                                            <Template Context="row">
+                                                <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                            </Template>
+                                        </RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Credit Card Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                    </Columns>
+                                </RadzenDataGrid>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Both, Different Amount (@_ccComparison.Mismatched.Count)</h6>
+                                <RadzenDataGrid Data="@_ccComparison.Mismatched" TItem="VarianceRow" AllowSorting="true"
+                                    AllowPaging="true" PageSize="10" EmptyText="None">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr" />
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="MxAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Credit Card Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                    </Columns>
+                                </RadzenDataGrid>
+                            </div>
+                        </div>
+                    }
+                    @if (_ccComparison.SplitMismatched.Count > 0)
+                    {
+                        <h6 class="mt-3">Same Total, Different Principal/Fee Split (@_ccComparison.SplitMismatched.Count)</h6>
+                        <RadzenDataGrid Data="@_ccComparison.SplitMismatched" TItem="SplitVarianceRow" AllowSorting="true"
+                            AllowPaging="true" PageSize="10" EmptyText="None">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="SplitVarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
+                                    <Template Context="row">
+                                        <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="SplitVarianceRow" Property="MxPrincipal" Title="MX Principal" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                <RadzenDataGridColumn TItem="SplitVarianceRow" Property="JarvisPrincipal" Title="Credit Card Principal" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                <RadzenDataGridColumn TItem="SplitVarianceRow" Property="MxFee" Title="MX Fee" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                                <RadzenDataGridColumn TItem="SplitVarianceRow" Property="JarvisFee" Title="Credit Card Fee" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                }
+            }
+            <RadzenDataGrid Data="@_ccRows" TItem="PaidByCreditCardRow" AllowSorting="true" AllowFiltering="true"
+                AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })"
+                IsLoading="@_ccLoading" EmptyText="@_ccEmptyText">
+                <Columns>
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="ParticipantName" Title="Participant" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="ContactName" Title="Contact" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="LeagueName" Title="League" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="ProgramName" Title="Program" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="RegistrationNbr" Title="Registration Nbr" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="ConfirmationNbr" Title="Confirmation Nbr" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="PaymentType" Title="Payment Type" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="PaymentDate" Title="Payment Date" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="PaymentAmount" Title="Payment Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="PaidByCreditCardRow" Property="ConvenienceFee" Title="Convenience Fee" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="MX Lookup">
+            @if (_mxLookupLoading)
+            {
+                <p class="text-muted">Searching...</p>
+            }
+            else if (_mxLookupError is not null)
+            {
+                <p class="text-danger">@_mxLookupError</p>
+            }
+            else if (_mxLookupResults.Count > 0)
+            {
+                @foreach (var result in _mxLookupResults)
+                {
+                    <h6 class="mt-3 d-flex align-items-center gap-2">
+                        <span>Payment Id: @result.PaymentId</span>
+                        @if (result.ErrorMessage is null)
+                        {
+                            <RadzenButton Text="Analyze in EMV Logs" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
+                                Click="@(() => GoToEmvLogsAsync(result))" />
+                        }
+                    </h6>
+                    @if (result.ErrorMessage is not null)
+                    {
+                        <p class="text-danger">@result.ErrorMessage</p>
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="@result.Fields" TItem="MxFieldRow" AllowSorting="true" AllowFiltering="true"
+                            AllowPaging="true" PageSize="50" PageSizeOptions="@(new[] { 25, 50, 100 })" EmptyText="No fields returned.">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="MxFieldRow" Property="Field" Title="Field" Width="320px" />
+                                <RadzenDataGridColumn TItem="MxFieldRow" Property="Value" Title="Value" />
+                            </Columns>
+                        </RadzenDataGrid>
+                    }
+                }
+            }
+        </RadzenTabsItem>
+        <RadzenTabsItem Text="EMV Logs">
+            @if (_emvLoading)
+            {
+                <p class="text-muted">Reading and analyzing the EMV logs...</p>
+            }
+            else if (_emvError is not null)
+            {
+                <p class="text-danger">@_emvError</p>
+            }
+            else if (_emvResult is null)
+            {
+                @if (_emvPrefillNote is not null)
+                {
+                    <div class="alert alert-info">@_emvPrefillNote</div>
+                }
+                <p class="text-muted">Select the organization and enter the date, time (and its time zone), amount and reference # (RegistrationNbr) of a payment that is in MX but not in Jarvis, then click Analyze.</p>
+            }
+            else
+            {
+                <p class="text-muted small">Log coverage: @_emvResult.LogCoverage</p>
+                <ul class="list-unstyled mb-3">
+                    @foreach (var finding in _emvResult.GeneralFindings)
+                    {
+                        <li class="@FindingClass(finding.Severity)">@finding.Text</li>
+                    }
+                </ul>
+
+                @if (_emvResult.Candidates.Count > 0)
+                {
+                    <h6>Matching terminal sale attempts (@_emvResult.Candidates.Count) - click one to analyze it</h6>
+                    <RadzenDataGrid Data="@_emvResult.Candidates" TItem="EmvCandidate" AllowSorting="true"
+                        SelectionMode="DataGridSelectionMode.Single" @bind-Value="_emvSelection" RowSelect="@((EmvCandidate _) => StateHasChanged())">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="StartTime" Title="Terminal Request (log time)" FormatString="{0:MM/dd/yyyy h:mm:ss tt}" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="MinutesFromEntered" Title="Min. from Entered Time" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="Amount" Title="Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="Epi" Title="Terminal EPI" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="OrderId" Title="Order Id" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="User" Title="User" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="Org" Title="Organization">
+                                <Template Context="row">@OrganizationLabel(row.Org)</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="TerminalResult" Title="Terminal Result" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Property="JarvisRecording" Title="Jarvis Recording" />
+                            <RadzenDataGridColumn TItem="EmvCandidate" Title="Matched By">
+                                <Template Context="row">@(row.MatchedByReferenceNbr ? "Reference #" : "Amount/time")</Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+
+                @if (SelectedEmvCandidate is { } candidate)
+                {
+                    <div class="mt-4">
+                        <h5>Analysis - @candidate.StartTime.ToString("MM/dd/yyyy h:mm:ss tt"), @candidate.Amount.ToString("C"), req_txn_id @candidate.ReqTxnId</h5>
+                        <div class="alert alert-warning"><strong>Likely reason not logged in Jarvis:</strong> @candidate.Conclusion</div>
+                        @if (candidate.PosTxnKey is { } posTxnKey)
+                        {
+                            <div class="mb-3 d-flex align-items-center gap-2">
+                                <span>POS txnKey <strong>@posTxnKey</strong></span>
+                                <RadzenButton Text="Check Pending Sale" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
+                                    Click="@(() => ShowPosTransactionAsync(candidate))" />
+                            </div>
+                        }
+                        <ul class="mb-3">
+                            @foreach (var finding in candidate.Findings)
+                            {
+                                <li class="@FindingClass(finding.Severity)">@finding.Text</li>
+                            }
+                        </ul>
+
+                        <h6>Timeline (@candidate.Timeline.Count entries)</h6>
+                        <RadzenDataGrid Data="@candidate.Timeline" TItem="EmvTimelineRow" AllowSorting="false" AllowFiltering="true"
+                            AllowPaging="true" PageSize="100" PageSizeOptions="@(new[] { 50, 100, 250 })" RowRender="@OnEmvTimelineRowRender">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="EmvTimelineRow" Property="Timestamp" Title="Time" FormatString="{0:h:mm:ss.fff tt}" Width="130px" />
+                                <RadzenDataGridColumn TItem="EmvTimelineRow" Property="Log" Title="Log" Width="150px" />
+                                <RadzenDataGridColumn TItem="EmvTimelineRow" Property="Attempt" Title="Attempt" Width="100px" />
+                                <RadzenDataGridColumn TItem="EmvTimelineRow" Property="Event" Title="Event" Width="300px" />
+                                <RadzenDataGridColumn TItem="EmvTimelineRow" Property="Detail" Title="Detail">
+                                    <Template Context="row"><span style="white-space:normal; word-break:break-all;">@row.Detail</span></Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </div>
+                }
+            }
+        </RadzenTabsItem>
+    </Tabs>
+</RadzenTabs>
+
+@if (_selectedVarianceBatch is not null)
+{
+    <div class="mt-4">
+        <h5>Variance Detail - @_selectedVarianceBatch.OrganizationName / Batch @_selectedVarianceBatch.BatchId</h5>
+        @if (_varianceLoading)
+        {
+            <p class="text-muted">Loading...</p>
+        }
+        else if (_varianceDetail is not null)
+        {
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <h6>MX Only (@_varianceDetail.MxOnly.Count)</h6>
+                    <RadzenDataGrid Data="@_varianceDetail.MxOnly" TItem="VarianceRow" AllowSorting="true"
+                        AllowPaging="true" PageSize="10" EmptyText="None">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
+                                <Template Context="row">
+                                    <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => GoToMxLookupAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="MxAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+                <div class="col-md-4">
+                    <h6>Jarvis Only (@_varianceDetail.JarvisOnly.Count)</h6>
+                    <RadzenDataGrid Data="@_varianceDetail.JarvisOnly" TItem="VarianceRow" AllowSorting="true"
+                        AllowPaging="true" PageSize="10" EmptyText="None">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
+                                <Template Context="row">
+                                    <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Jarvis Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+                <div class="col-md-4">
+                    <h6>Both, Different Amount (@_varianceDetail.Mismatched.Count)</h6>
+                    <RadzenDataGrid Data="@_varianceDetail.Mismatched" TItem="VarianceRow" AllowSorting="true"
+                        AllowPaging="true" PageSize="10" EmptyText="None">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
+                                <Template Context="row">
+                                    <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="MxAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Jarvis Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                        </Columns>
+                    </RadzenDataGrid>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_selectedReferenceNbr is not null)
+{
+    <div class="mt-4">
+        <h5>Reference Nbr Detail - @_selectedReferenceNbr</h5>
+        @if (_referenceNbrLoading)
+        {
+            <p class="text-muted">Loading...</p>
+        }
+        else if (_referenceNbrDetail is not null)
+        {
+            <RadzenDataGrid Data="@_referenceNbrDetail" TItem="ReferenceNbrDetailRow" AllowSorting="true"
+                AllowPaging="true" PageSize="10" EmptyText="Not found in any Jarvis payment table.">
+                <Columns>
+                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="SourceTable" Title="Table" />
+                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="PaymentAmount" Title="Payment Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="ConfirmationNbr" Title="Confirmation Nbr" />
+                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="MerchantBatchId" Title="Merchant Batch Id" />
+                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="MerchantBatchIdNum" Title="Merchant Batch Id Num" />
+                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="PaymentDate" Title="Payment Date" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </div>
+}
+
+@code {
+    private const int AllOrganizationsKey = 0;
+
+    // Tab order: 0 Blank Merchant Id, 1 Batch Summary (share the filter bar above the tabs),
+    // 2 Paid by Credit Card, 3 MX Lookup, 4 EMV Logs (each has its own filters).
+    private int _selectedTabIndex;
+
+    private List<OrganizationOption> _organizations = [];
+    private List<OrganizationOption> _orgDropdownItems = [];
+    private int _selectedOrgKey = AllOrganizationsKey;
+    private List<BatchOption> _batchOptions = [];
+    private int? _selectedBatchKey;
+    private DateTime? _selectedDate;
+    private DateTime _maxSelectableDate;
+
+    private List<BatchSummaryRow> _batchRows = [];
+    private List<BlankMerchantIdRow> _blankMerchantIdRows = [];
+    private bool _blankMerchantIdLoading;
+    private bool _loading;
+
+    private BatchSummaryRow? _selectedVarianceBatch;
+    private BatchVarianceDetail? _varianceDetail;
+    private bool _varianceLoading;
+
+    private bool _refreshingAllBatches;
+    private int _refreshAllProgress;
+    private int _refreshAllTotal;
+
+    private string? _selectedReferenceNbr;
+    private List<ReferenceNbrDetailRow>? _referenceNbrDetail;
+    private bool _referenceNbrLoading;
+
+    private int? _ccOrgKey;
+    private DateTime? _ccDate = DateTime.Today;
+    private List<PaidByCreditCardRow> _ccRows = [];
+    private bool _ccLoading;
+    private string _ccEmptyText = "Select an organization and date, then click Run.";
+
+    private List<BatchOption> _ccBatchOptions = [];
+    private IEnumerable<int> _ccSelectedBatchKeys = [];
+    private CreditCardBatchComparison? _ccComparison;
+    private bool _ccComparisonLoading;
+
+    // Last organization/date picked on any tab, carried over as the starting default the first
+    // time each other tab is visited - doesn't overwrite a tab once the user has already used it.
+    private int? _sharedOrgKey;
+    private DateTime? _sharedDate;
+    private bool _ccFilterInitialized;
+    private bool _mxLookupFilterInitialized;
+
+    private int? _mxLookupOrgKey;
+    private string _mxLookupReferenceNbr = "";
+    private List<MxPaymentLookupResult> _mxLookupResults = [];
+    private bool _mxLookupLoading;
+    private string? _mxLookupError;
+
+    private int? _emvOrgKey;
+    private bool _emvFilterInitialized;
+    private DateTime? _emvDate = DateTime.Today;
+    private DateTime? _emvTime;
+    private string _emvTimeZoneId = EmvLogAnalysisService.DefaultTimeZoneId;
+    private decimal? _emvAmount;
+    private string _emvReferenceNbr = "";
+    private string? _emvError;
+    private string? _emvPrefillNote;
+    private bool _emvLoading;
+    private EmvAnalysisResult? _emvResult;
+    private IList<EmvCandidate> _emvSelection = [];
+
+    private EmvCandidate? SelectedEmvCandidate => _emvSelection.FirstOrDefault();
+
+    // Empty list means "no organization filter" - QualifyingBatches already treats that as
+    // every gateway-qualifying organization, which is exactly what "All Organizations" means.
+    private List<int> SelectedOrgKeys => _selectedOrgKey == AllOrganizationsKey ? [] : [_selectedOrgKey];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _maxSelectableDate = DateTime.Today.AddDays(-1);
+        _selectedDate = _maxSelectableDate;
+
+        _organizations = await MxService.GetQualifyingOrganizationsAsync();
+        _orgDropdownItems = new List<OrganizationOption> { new(AllOrganizationsKey, "All Organizations") }
+            .Concat(_organizations)
+            .ToList();
+
+        await LoadBatchOptionsAsync();
+        await LoadReportAsync();
+    }
+
+    private async Task OnOrgOrDateChangedAsync()
+    {
+        if (_selectedOrgKey != AllOrganizationsKey)
+            _sharedOrgKey = _selectedOrgKey;
+        _sharedDate = _selectedDate ?? _sharedDate;
+
+        await LoadBatchOptionsAsync();
+    }
+
+    private Task OnCcFilterChanged()
+    {
+        _sharedOrgKey = _ccOrgKey ?? _sharedOrgKey;
+        _sharedDate = _ccDate ?? _sharedDate;
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadBatchOptionsAsync()
+    {
+        if (_selectedDate.HasValue)
+        {
+            _batchOptions = await MxService.GetBatchOptionsAsync(SelectedOrgKeys, DateOnly.FromDateTime(_selectedDate.Value));
+        }
+        else
+        {
+            _batchOptions = [];
+        }
+
+        if (_selectedBatchKey.HasValue && !_batchOptions.Any(b => b.MxmerchantBatchKey == _selectedBatchKey.Value))
+        {
+            _selectedBatchKey = null;
+        }
+    }
+
+    private async Task LoadReportAsync()
+    {
+        _loading = true;
+        _blankMerchantIdLoading = true;
+        _selectedVarianceBatch = null;
+        _varianceDetail = null;
+        _selectedReferenceNbr = null;
+        _referenceNbrDetail = null;
+
+        var filter = new MxReconciliationFilter(
+            SelectedOrgKeys,
+            _selectedBatchKey.HasValue ? null : (_selectedDate.HasValue ? DateOnly.FromDateTime(_selectedDate.Value) : null),
+            _selectedBatchKey);
+
+        // Blank Merchant Id is the default (first) tab - load and show it before Batch Summary.
+        _blankMerchantIdRows = await MxService.GetBlankMerchantIdTransactionsAsync(SelectedOrgKeys);
+        _blankMerchantIdLoading = false;
+        StateHasChanged();
+
+        _batchRows = await MxService.GetBatchSummaryAsync(filter);
+
+        _loading = false;
+    }
+
+    private void OnTabChanged(int index)
+    {
+        _selectedTabIndex = index;
+        _selectedVarianceBatch = null;
+        _varianceDetail = null;
+        _selectedReferenceNbr = null;
+        _referenceNbrDetail = null;
+
+        if (index == 2 && !_ccFilterInitialized)
+        {
+            _ccFilterInitialized = true;
+            _ccOrgKey ??= _sharedOrgKey;
+            if (_sharedDate.HasValue)
+                _ccDate = _sharedDate;
+        }
+        else if (index == 3 && !_mxLookupFilterInitialized)
+        {
+            _mxLookupFilterInitialized = true;
+            _mxLookupOrgKey ??= _sharedOrgKey;
+        }
+        else if (index == 4 && !_emvFilterInitialized)
+        {
+            _emvFilterInitialized = true;
+            _emvOrgKey ??= _sharedOrgKey;
+            if (_sharedDate.HasValue)
+                _emvDate = _sharedDate;
+        }
+    }
+
+    private async Task ShowVarianceDetailAsync(BatchSummaryRow row)
+    {
+        _selectedVarianceBatch = row;
+        _varianceLoading = true;
+
+        _varianceDetail = await MxService.GetBatchVarianceDetailAsync(row.MxmerchantBatchKey);
+
+        _varianceLoading = false;
+    }
+
+    private async Task ShowBatchNumberSummaryAsync(BatchSummaryRow row)
+    {
+        var jarvisTotal = await MxService.GetJarvisTotalByBatchNumberAsync(row.MxmerchantBatchKey);
+        var difference = row.MxmerchantAmount - jarvisTotal;
+
+        await DialogService.OpenAsync($"{row.OrganizationName} - Batch {row.BatchId}", ds =>
+            @<div>
+                <p><strong>MX Total:</strong> @row.MxmerchantAmount.ToString("C")</p>
+                <p><strong>Jarvis Total (by Batch Number):</strong> @jarvisTotal.ToString("C")</p>
+                <p class="@(difference != 0 ? "text-danger fw-semibold" : "")"><strong>Difference:</strong> @difference.ToString("C")</p>
+                <div class="d-flex justify-content-end mt-3">
+                    <RadzenButton Text="Update Jarvis" ButtonStyle="ButtonStyle.Primary"
+                        Click="@(async () => await UpdateJarvisAmountAndCloseAsync(row.MxmerchantBatchKey, jarvisTotal, ds))" />
+                </div>
+            </div>,
+            new DialogOptions { Width = "380px" });
+    }
+
+    private async Task UpdateJarvisAmountAndCloseAsync(int mxmerchantBatchKey, decimal jarvisTotal, DialogService ds)
+    {
+        await MxService.UpdateJarvisAmountAsync(mxmerchantBatchKey, jarvisTotal);
+        ds.Close();
+        await LoadReportAsync();
+    }
+
+    // Does exactly what clicking a single batch number does (GetJarvisTotalByBatchNumberAsync, then
+    // UpdateJarvisAmountAsync) for every batch currently shown, one at a time - so the whole grid's
+    // Jarvis Amount/Variance is caught up without opening each batch's dialog individually. Batches
+    // with no BatchNumber have no clickable link on this page either (see the Batch Number column
+    // template above), so they're skipped here too.
+    private async Task RefreshAllBatchesAsync()
+    {
+        var batchesToRefresh = _batchRows.Where(b => b.BatchNumber is not null).ToList();
+
+        _refreshingAllBatches = true;
+        _refreshAllProgress = 0;
+        _refreshAllTotal = batchesToRefresh.Count;
+
+        foreach (var row in batchesToRefresh)
+        {
+            var jarvisTotal = await MxService.GetJarvisTotalByBatchNumberAsync(row.MxmerchantBatchKey);
+            await MxService.UpdateJarvisAmountAsync(row.MxmerchantBatchKey, jarvisTotal);
+
+            _refreshAllProgress++;
+            StateHasChanged();
+        }
+
+        _refreshingAllBatches = false;
+        await LoadReportAsync();
+    }
+
+    private async Task RunPaidByCreditCardAsync()
+    {
+        if (!_ccOrgKey.HasValue || !_ccDate.HasValue)
+            return;
+
+        _ccLoading = true;
+        _ccSelectedBatchKeys = [];
+        _ccComparison = null;
+
+        var date = DateOnly.FromDateTime(_ccDate.Value);
+        _ccRows = await MxService.GetPaidByCreditCardAsync(_ccOrgKey.Value, date);
+        _ccBatchOptions = await MxService.GetBatchOptionsForCreditCardAsync(_ccOrgKey.Value, date);
+
+        _ccEmptyText = "No credit card payments for the selected organization and date.";
+        _ccLoading = false;
+    }
+
+    private async Task SearchMxLookupAsync()
+    {
+        _mxLookupResults = [];
+        _mxLookupError = null;
+
+        if (!_mxLookupOrgKey.HasValue || string.IsNullOrWhiteSpace(_mxLookupReferenceNbr))
+        {
+            _mxLookupError = "Select an organization and enter a Reference Nbr.";
+            return;
+        }
+
+        _mxLookupLoading = true;
+
+        var paymentIds = await MxLookupService.GetPaymentIdsAsync(_mxLookupOrgKey.Value, _mxLookupReferenceNbr.Trim());
+        if (paymentIds.Count == 0)
+        {
+            _mxLookupError = "No MxmerchantBatchTxn row with a PaymentId was found for that organization/Reference Nbr.";
+            _mxLookupLoading = false;
+            return;
+        }
+
+        foreach (var paymentId in paymentIds)
+            _mxLookupResults.Add(await MxLookupService.LookupPaymentAsync(_mxLookupOrgKey.Value, paymentId));
+
+        _mxLookupLoading = false;
+    }
+
+    // For a payment that is in MX but not in Jarvis: confirms Jarvis has no payment row for the
+    // RegistrationNbr, then has EmvLogAnalysisService trace the sale through paymentservice.log and
+    // posregister.log. The best match (found by RegistrationNbr, else closest amount/time) is
+    // selected straight away.
+    private async Task AnalyzeEmvLogsAsync()
+    {
+        _emvError = null;
+        _emvPrefillNote = null;
+        _emvResult = null;
+        _emvSelection = [];
+
+        if (!_emvOrgKey.HasValue || !_emvDate.HasValue || !_emvTime.HasValue || !_emvAmount.HasValue || string.IsNullOrWhiteSpace(_emvReferenceNbr))
+        {
+            _emvError = "Select an organization and enter a date, time, amount and reference #.";
+            return;
+        }
+
+        _emvLoading = true;
+        try
+        {
+            var referenceNbr = _emvReferenceNbr.Trim();
+            var enteredTime = _emvDate.Value.Date + _emvTime.Value.TimeOfDay;
+            var jarvisRows = await MxService.GetReferenceNbrDetailAsync(referenceNbr);
+
+            _emvResult = await EmvLogService.AnalyzeAsync(_emvOrgKey.Value, enteredTime, _emvTimeZoneId, _emvAmount.Value, referenceNbr, jarvisRows);
+            _emvError = _emvResult.Error;
+            if (_emvResult.Candidates.Count > 0)
+                _emvSelection = [_emvResult.Candidates[0]];
+        }
+        catch (Exception ex)
+        {
+            _emvError = $"Could not analyze the EMV logs: {ex.Message}";
+        }
+        finally
+        {
+            _emvLoading = false;
+        }
+    }
+
+    // POSTransaction/POSTransactionItem/POSTransactionPayment rows for the register sale behind an EMV
+    // attempt - shows whether the sale was left pending (TotalPaid short of TotalDue) or finalized.
+    // "Insert Payment" closes this pop-up, opens InsertPosPaymentDialog, then reopens this pop-up with
+    // the refreshed transaction.
+    private async Task ShowPosTransactionAsync(EmvCandidate candidate)
+    {
+        var postransactionKey = candidate.PosTxnKey!.Value;
+        var referenceNbr = _emvReferenceNbr.Trim();
+        string? insertedMessage = null;
+
+        while (true)
+        {
+            var detail = await MxService.GetPosTransactionDetailAsync(postransactionKey);
+            var message = insertedMessage;
+
+            var action = await DialogService.OpenAsync($"POS Transaction {postransactionKey}", ds =>
+            @<div>
+                @if (message is not null)
+                {
+                    <div class="alert alert-success">@message</div>
+                }
+                @if (detail is null)
+                {
+                    <p class="text-danger">No POSTransaction row with PostransactionKey @postransactionKey was found.</p>
+                }
+                else
+                {
+                    var unpaid = detail.TotalDue - detail.TotalPaid;
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Status:</strong> <span class="@(unpaid != 0 ? "text-danger fw-semibold" : "")">@detail.TransactionStatus</span></p>
+                            <p class="mb-1"><strong>Organization:</strong> @detail.OrganizationName (@detail.OrganizationKey)</p>
+                            <p class="mb-1"><strong>Location:</strong> @(detail.LocationName ?? "(none)") @(detail.PoslocationKey is null ? "" : $"({detail.PoslocationKey})")</p>
+                            <p class="mb-1"><strong>Entered:</strong> @detail.DateTimeEntered.ToString("MM/dd/yyyy h:mm:ss tt") by @detail.EnteredByUser</p>
+                            @if (detail.RefundReason is not null)
+                            {
+                                <p class="mb-1"><strong>Refund Reason:</strong> @detail.RefundReason</p>
+                            }
+                            @if (detail.XOriginalTransactionId is not null)
+                            {
+                                <p class="mb-1"><strong>Original Transaction Id:</strong> @detail.XOriginalTransactionId</p>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Subtotal:</strong> @detail.SubtotalAmount.ToString("C")</p>
+                            <p class="mb-1"><strong>Discount:</strong> @detail.DiscountAmount.ToString("C") @(detail.DiscountCodeKey is null ? "" : $"(code key {detail.DiscountCodeKey})")</p>
+                            <p class="mb-1"><strong>Tax:</strong> @detail.TotalTaxAmount.ToString("C")</p>
+                            <p class="mb-1"><strong>Convenience Fee:</strong> @detail.ConvenienceFee.ToString("C")</p>
+                            <p class="mb-1"><strong>Total Due:</strong> @detail.TotalDue.ToString("C")</p>
+                            <p class="mb-1"><strong>Total Paid:</strong> <span class="@(unpaid != 0 ? "text-danger fw-semibold" : "")">@detail.TotalPaid.ToString("C")</span>
+                                @if (unpaid != 0)
+                                {
+                                    <span class="text-danger fw-semibold">(@unpaid.ToString("C") unpaid)</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+                    <h6>Items (@detail.Items.Count)</h6>
+                    <RadzenDataGrid Data="@detail.Items" TItem="PosTransactionItemRow" AllowSorting="true" EmptyText="No POSTransactionItem rows.">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="TransactionItemId" Title="Item Id" Width="90px" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="ItemDescription" Title="Description" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="CustomerName" Title="Customer" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="PosproductKey" Title="Product Key" Width="100px" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="PositemKey" Title="Item Key" Width="90px" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="UnitPrice" Title="Unit Price" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="Quantity" Title="Qty" TextAlign="TextAlign.Right" Width="70px" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="SubtotalAmount" Title="Subtotal" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="ConvenienceFeeAmount" Title="Conv. Fee" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="TaxAmount" Title="Tax" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="TotalDue" Title="Total Due" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="RevenueCode" Title="Revenue Code" />
+                            <RadzenDataGridColumn TItem="PosTransactionItemRow" Property="DateTimeAdded" Title="Added" FormatString="{0:MM/dd/yyyy h:mm:ss tt}" />
+                        </Columns>
+                    </RadzenDataGrid>
+                    <h6 class="mt-3">Payments (@detail.Payments.Count)</h6>
+                    <RadzenDataGrid Data="@detail.Payments" TItem="PosTransactionPaymentRow" AllowSorting="true" EmptyText="No POSTransactionPayment rows - no payment is recorded for this sale.">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="PostransactionPaymentKey" Title="Payment Key" Width="110px" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="PaymentDate" Title="Date" FormatString="{0:MM/dd/yyyy h:mm:ss tt}" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="PaymentType" Title="Type" Width="80px" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="PaymentAmount" Title="Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="ConvenienceFee" Title="Conv. Fee" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="RegistrationNbr" Title="Registration Nbr" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="ConfirmationNbr" Title="Confirmation Nbr" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="ShiftKey" Title="Shift" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="PaymentPostedBy" Title="Posted By" />
+                            <RadzenDataGridColumn TItem="PosTransactionPaymentRow" Property="PaymentNotes" Title="Notes" />
+                        </Columns>
+                    </RadzenDataGrid>
+                }
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    @if (detail is not null)
+                    {
+                        <RadzenButton Text="Insert Payment" ButtonStyle="ButtonStyle.Primary" Click="@(() => ds.Close("insert"))" />
+                    }
+                    <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@(() => ds.Close())" />
+                </div>
+            </div>,
+                new DialogOptions { Width = "1100px", Resizable = true });
+
+            if (detail is null || action is not string choice || choice != "insert")
+                return;
+
+            var paymentKey = await DialogService.OpenAsync<InsertPosPaymentDialog>($"Insert Payment - POS Transaction {postransactionKey}",
+                new Dictionary<string, object?>
+                {
+                    [nameof(InsertPosPaymentDialog.Detail)] = detail,
+                    [nameof(InsertPosPaymentDialog.ReferenceNbr)] = referenceNbr,
+                    [nameof(InsertPosPaymentDialog.SaleTime)] = candidate.StartTime,
+                    [nameof(InsertPosPaymentDialog.ReqTxnId)] = candidate.ReqTxnId,
+                },
+                new DialogOptions { Width = "900px", Resizable = true });
+
+            insertedMessage = paymentKey is int key
+                ? $"Payment inserted (POSTransactionPaymentKey {key}). Click Analyze again to refresh the EMV analysis."
+                : null;
+        }
+    }
+
+    private Task OnEmvFilterChanged()
+    {
+        _sharedOrgKey = _emvOrgKey ?? _sharedOrgKey;
+        _sharedDate = _emvDate ?? _sharedDate;
+        return Task.CompletedTask;
+    }
+
+    // The logs carry the organization key; show its name when it's one of the page's organizations.
+    private string OrganizationLabel(string? org)
+    {
+        if (org is null)
+            return "(unknown)";
+        var match = int.TryParse(org, out var key) ? _organizations.FirstOrDefault(o => o.OrganizationKey == key) : null;
+        return match is null ? org : match.OrganizationName;
+    }
+
+    private static string FindingClass(EmvFindingSeverity severity) => severity switch
+    {
+        EmvFindingSeverity.Problem => "text-danger fw-semibold",
+        EmvFindingSeverity.Warning => "text-warning-emphasis",
+        _ => "",
+    };
+
+    private void OnEmvTimelineRowRender(RowRenderEventArgs<EmvTimelineRow> args)
+    {
+        if (args.Data is null)
+            return;
+        if (args.Data.Highlight == EmvFindingSeverity.Problem)
+            args.Attributes.Add("style", "background-color:#f8d7da;");
+        else if (args.Data.IsGood)
+            args.Attributes.Add("style", "background-color:#d1e7dd;");
+    }
+
+    private async Task CompareCreditCardToBatchesAsync()
+    {
+        var selectedKeys = _ccSelectedBatchKeys.ToList();
+        if (selectedKeys.Count == 0 || _ccOrgKey is null)
+        {
+            _ccComparison = null;
+            return;
+        }
+
+        _ccComparisonLoading = true;
+
+        _ccComparison = await MxService.CompareCreditCardToBatchesAsync(_ccOrgKey.Value, selectedKeys, _ccRows);
+
+        _ccComparisonLoading = false;
+    }
+
+    private async Task ShowReferenceNbrDetailAsync(string referenceNbr)
+    {
+        _selectedReferenceNbr = referenceNbr;
+        _referenceNbrLoading = true;
+
+        _referenceNbrDetail = await MxService.GetReferenceNbrDetailAsync(referenceNbr);
+
+        _referenceNbrLoading = false;
+    }
+
+    // A batch summary variance row "In MX Only" has nothing stamped on the Jarvis side (that's exactly
+    // what "MX Only" means), so send the user to MX Lookup and run the MX-side search immediately using
+    // this batch's organization. Also run the same all-payment-tables Jarvis search used elsewhere on
+    // this page (ShowReferenceNbrDetailAsync) and show it at the bottom - an "MX Only" reference nbr
+    // often does have Jarvis rows (e.g. an unstamped split payment), just none stamped with this batch.
+    // MX Lookup -> EMV Logs: prefills the EMV Logs filters from the MX payment being shown - organization
+    // and reference # from the lookup, amount from MX's "amount" (else the MX batch transaction), and
+    // date/time from MX's "created" (UTC) converted to Central. The user then clicks Analyze.
+    private async Task GoToEmvLogsAsync(MxPaymentLookupResult result)
+    {
+        string? Field(string name) => result.Fields
+            .FirstOrDefault(f => string.Equals(f.Field, name, StringComparison.OrdinalIgnoreCase))?.Value;
+
+        var referenceNbr = _mxLookupReferenceNbr.Trim();
+        var missing = new List<string>();
+
+        decimal? amount = decimal.TryParse(Field("amount"), System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var mxAmount) ? mxAmount : null;
+        if (amount is null && _mxLookupOrgKey.HasValue)
+            amount = (await MxService.GetMxBatchTxnsForReferenceAsync(_mxLookupOrgKey.Value, referenceNbr)).FirstOrDefault()?.Amount;
+        if (amount is null)
+            missing.Add("amount");
+
+        DateTime? created = null;
+        if (DateTimeOffset.TryParse(Field("created"), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var createdUtc))
+        {
+            var central = TimeZoneInfo.FindSystemTimeZoneById(EmvLogAnalysisService.DefaultTimeZoneId);
+            created = TimeZoneInfo.ConvertTime(createdUtc, central).DateTime;
+        }
+        else
+            missing.Add("date/time");
+
+        _emvOrgKey = _mxLookupOrgKey;
+        _emvReferenceNbr = referenceNbr;
+        _emvAmount = amount;
+        _emvTimeZoneId = EmvLogAnalysisService.DefaultTimeZoneId;
+        if (created.HasValue)
+        {
+            _emvDate = created.Value.Date;
+            _emvTime = created.Value;
+        }
+
+        _emvResult = null;
+        _emvSelection = [];
+        _emvError = null;
+        _emvPrefillNote = $"Filled in from MX Lookup payment {result.PaymentId}" +
+            (created.HasValue ? $" - MX created {createdUtc.UtcDateTime:MM/dd/yyyy h:mm tt} UTC = {created:MM/dd/yyyy h:mm tt} Central." : ".") +
+            (missing.Count > 0 ? $" MX did not return the {string.Join(" or ", missing)} - enter it before clicking Analyze." : " Check the filters, then click Analyze.");
+        _sharedOrgKey = _emvOrgKey ?? _sharedOrgKey;
+        _emvFilterInitialized = true;
+        _selectedTabIndex = 4;
+        _selectedVarianceBatch = null;
+        _selectedReferenceNbr = null;
+    }
+
+    private async Task GoToMxLookupAsync(string referenceNbr)
+    {
+        if (_selectedVarianceBatch is null)
+            return;
+
+        _mxLookupOrgKey = _selectedVarianceBatch.OrganizationKey;
+        _mxLookupReferenceNbr = referenceNbr;
+        _mxLookupFilterInitialized = true;
+        _selectedTabIndex = 3;
+
+        await SearchMxLookupAsync();
+        await ShowReferenceNbrDetailAsync(referenceNbr);
+    }
+}

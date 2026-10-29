@@ -1,0 +1,77 @@
+@page "/mxcustomervaultlookup"
+@using JarvisAdmin.Web.Services
+@inject MxReconciliationService MxService
+@inject MxPaymentLookupService MxLookupService
+
+<PageTitle>Customer Vault Lookup - Jarvis Admin</PageTitle>
+
+<h1>Customer Vault Lookup</h1>
+<p class="text-muted">Look up an MX Merchant customer's card vault by MX Customer Id. Read-only.</p>
+
+<div class="row g-3 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label d-block">Organization</label>
+        <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="OrganizationName" ValueProperty="OrganizationKey"
+            @bind-Value="_orgKey" Placeholder="(select an organization)" Style="min-width:260px" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label d-block">MX Customer Id</label>
+        <RadzenNumeric TValue="long?" @bind-Value="_customerId" Style="min-width:220px" />
+    </div>
+    <div class="col-auto">
+        <RadzenButton Text="Search" Click="@SearchAsync" ButtonStyle="ButtonStyle.Primary" />
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="text-muted">Searching...</p>
+}
+else if (_error is not null)
+{
+    <p class="text-danger">@_error</p>
+}
+else if (_fields.Count > 0)
+{
+    <RadzenDataGrid Data="@_fields" TItem="MxFieldRow" AllowSorting="true" AllowFiltering="true"
+        AllowPaging="true" PageSize="50" PageSizeOptions="@(new[] { 25, 50, 100 })" EmptyText="No fields returned.">
+        <Columns>
+            <RadzenDataGridColumn TItem="MxFieldRow" Property="Field" Title="Field" Width="320px" />
+            <RadzenDataGridColumn TItem="MxFieldRow" Property="Value" Title="Value" />
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    private List<OrganizationOption> _organizations = [];
+    private int? _orgKey;
+    private long? _customerId;
+    private List<MxFieldRow> _fields = [];
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _organizations = await MxService.GetQualifyingOrganizationsAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _fields = [];
+        _error = null;
+
+        if (!_orgKey.HasValue || !_customerId.HasValue)
+        {
+            _error = "Select an organization and enter an MX Customer Id.";
+            return;
+        }
+
+        _loading = true;
+
+        var result = await MxLookupService.LookupCustomerVaultAsync(_orgKey.Value, _customerId.Value.ToString());
+        _error = result.ErrorMessage;
+        _fields = result.Fields;
+
+        _loading = false;
+    }
+}

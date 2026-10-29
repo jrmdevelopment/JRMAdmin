@@ -1,0 +1,110 @@
+@page "/databasechecks"
+@using JarvisAdmin.Web.Services
+@inject DatabaseChecksService ChecksService
+
+<PageTitle>Database Checks - Jarvis Admin</PageTitle>
+
+<h1>Database Checks</h1>
+<p class="text-muted">Data integrity checks by functional area. Read-only.</p>
+
+<div class="row g-3 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label d-block">Functional Area</label>
+        <RadzenDropDown TValue="string" Data="@_functionalAreas" @bind-Value="_selectedArea" Style="min-width:220px" />
+    </div>
+    <div class="col-auto">
+        <RadzenButton Text="Run Checks" Click="@RunChecksAsync" ButtonStyle="ButtonStyle.Primary" />
+    </div>
+</div>
+
+@if (_shownArea == "Sponsor")
+{
+    @if (_sponsorResults.Count > 0)
+    {
+        <div class="mb-2">
+            @foreach (var g in _sponsorResults.GroupBy(r => r.Problem))
+            {
+                <span class="badge bg-secondary me-2">@g.Key: @g.Count()</span>
+            }
+        </div>
+    }
+
+    <RadzenDataGrid Data="@_sponsorResults" TItem="SponsorCheckRow" AllowSorting="true" AllowFiltering="true"
+        FilterMode="FilterMode.SimpleWithMenu" AllowColumnResize="true"
+        AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })"
+        IsLoading="@_loading" EmptyText="@_emptyText">
+        <Columns>
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="Problem" Title="Problem" Width="200px" Frozen="true" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="Details" Title="Details" Width="300px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="OrganizationName" Title="Organization" Width="200px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="SponsorKey" Title="Sponsor Key" Width="110px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="SponsorName" Title="Sponsor" Width="200px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="SponsorStatus" Title="Status" Width="80px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="ContactName" Title="Contact" Width="160px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="ContactPhoneNbr" Title="Contact Phone" Width="130px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="ContactEmail" Title="Contact Email" Width="200px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="PaymentSponsorKey" Title="Pledge Key" Width="140px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="PledgeType" Title="Pledge Type" Width="160px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="SponsorAmount" Title="Sponsor Amt" FormatString="{0:C}" TextAlign="TextAlign.Right" Width="120px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="PaymentAmount" Title="Payment Amt" FormatString="{0:C}" TextAlign="TextAlign.Right" Width="120px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="ConvenienceFee" Title="Conv. Fee" FormatString="{0:C}" TextAlign="TextAlign.Right" Width="110px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="RefundAmount" Title="Refund" FormatString="{0:C}" TextAlign="TextAlign.Right" Width="110px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="SponsorshipAdded" Title="Pledged" FormatString="{0:MM/dd/yyyy}" Width="110px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="PaymentDate" Title="Paid" FormatString="{0:MM/dd/yyyy}" Width="110px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="PaymentType" Title="Pmt Type" Width="100px" />
+            <RadzenDataGridColumn TItem="SponsorCheckRow" Property="ConfirmationNbr" Title="Confirmation #" Width="130px" />
+        </Columns>
+    </RadzenDataGrid>
+}
+else
+{
+    <RadzenDataGrid Data="@_results" TItem="DatabaseCheckRow" AllowSorting="true" AllowFiltering="true"
+        AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })"
+        IsLoading="@_loading" EmptyText="@_emptyText">
+        <Columns>
+            <RadzenDataGridColumn TItem="DatabaseCheckRow" Property="OrganizationName" Title="Organization" />
+            <RadzenDataGridColumn TItem="DatabaseCheckRow" Property="SystemArea" Title="System Area" />
+            <RadzenDataGridColumn TItem="DatabaseCheckRow" Property="DatabaseCheck" Title="Check" />
+            <RadzenDataGridColumn TItem="DatabaseCheckRow" Property="DatabaseKey" Title="Key" />
+            <RadzenDataGridColumn TItem="DatabaseCheckRow" Property="Field1" Title="Field 1" />
+            <RadzenDataGridColumn TItem="DatabaseCheckRow" Property="Field2" Title="Field 2" />
+        </Columns>
+    </RadzenDataGrid>
+}
+
+@code {
+    private static readonly string[] _functionalAreas = ["Shift", "Recurring Billing", "Sponsor"];
+
+    private string _selectedArea = "Shift";
+    // Area whose results are currently displayed - only changes on Run Checks, so switching the
+    // dropdown doesn't swap grids out from under existing results.
+    private string _shownArea = "Shift";
+    private List<DatabaseCheckRow> _results = [];
+    private List<SponsorCheckRow> _sponsorResults = [];
+    private bool _loading;
+    private string _emptyText = "Select a functional area and click Run Checks.";
+
+    private async Task RunChecksAsync()
+    {
+        _loading = true;
+        _shownArea = _selectedArea;
+        _results = [];
+        _sponsorResults = [];
+
+        switch (_selectedArea)
+        {
+            case "Shift":
+                _results = await ChecksService.RunShiftChecksAsync();
+                break;
+            case "Recurring Billing":
+                _results = await ChecksService.RunRecurringBillingChecksAsync();
+                break;
+            case "Sponsor":
+                _sponsorResults = await ChecksService.RunSponsorChecksAsync();
+                break;
+        }
+
+        _emptyText = "No issues found.";
+        _loading = false;
+    }
+}

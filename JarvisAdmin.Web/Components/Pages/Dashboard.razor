@@ -1,0 +1,71 @@
+@page "/dashboard"
+@using JarvisAdmin.Web.Services
+@inject LoggedInUsersService LoggedInUsersService
+
+<PageTitle>Dashboard - Jarvis Admin</PageTitle>
+
+<h1>Dashboard</h1>
+<p class="text-muted">This is the Jarvis Admin dashboard. Admin tools and reports will show up here.</p>
+
+<div class="row g-3">
+    <div class="col-12 col-xl-8">
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <span class="fw-semibold">
+                    Logged in Users
+                    @if (!_loading)
+                    {
+                        <span class="badge bg-secondary ms-1">@_users.Count</span>
+                    }
+                </span>
+                <RadzenButton Text="Refresh" Icon="refresh" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                    Click="@LoadAsync" IsBusy="@_loading" />
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Users active in Jarvis within the last 30 minutes. Times are shown in each organization's time zone.</p>
+
+                @if (_error is not null)
+                {
+                    <p class="text-danger">@_error</p>
+                }
+
+                <RadzenDataGrid Data="@_users" TItem="LoggedInUserRow" AllowSorting="true" AllowPaging="true" PageSize="10"
+                    IsLoading="@_loading" EmptyText="No users are currently logged in.">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="LoggedInUserRow" Property="UserName" Title="User" />
+                        <RadzenDataGridColumn TItem="LoggedInUserRow" Property="OrganizationName" Title="Organization" />
+                        <RadzenDataGridColumn TItem="LoggedInUserRow" Property="LoggedIn" Title="Logged In" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                        <RadzenDataGridColumn TItem="LoggedInUserRow" Property="LastActivity" Title="Last Activity" FormatString="{0:h:mm tt}" />
+                        <RadzenDataGridColumn TItem="LoggedInUserRow" Property="TimeZoneName" Title="Time Zone" />
+                    </Columns>
+                </RadzenDataGrid>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<LoggedInUserRow> _users = [];
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _users = await LoggedInUsersService.GetLoggedInUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load logged in users: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

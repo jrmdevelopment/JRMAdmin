@@ -1,0 +1,237 @@
+@using JarvisAdmin.Web.Services
+@inject MxReconciliationService MxService
+@inject DialogService DialogService
+
+@* Opened from MX Reconciliation > EMV Logs > Check Pending Sale. Records an EMV payment MX has but
+   Jarvis never recorded on the POS transaction being shown, pre-filled from the MX batch transaction
+   (amount, auth code) and the POS transaction's shift. Closes with the new POSTransactionPaymentKey,
+   or null if cancelled. *@
+
+@if (_loading)
+{
+    <p class="text-muted">Loading MX batch transaction and shift...</p>
+}
+else
+{
+    @if (_blockedReason is not null)
+    {
+        <div class="alert alert-danger">@_blockedReason</div>
+    }
+    else
+    {
+        <p class="text-muted small">
+            Inserts a POSTransactionPayment row for POS transaction @Detail.PostransactionKey (organization @Detail.OrganizationKey,
+            posted by "@PostedBy", with the convenience fee) and sets that POSTransaction to COMPLETED with TotalPaid = the payment
+            amount and ConvenienceFee = the fee. It does not deduct inventory or produce barcode tickets.
+        </p>
+    }
+
+    @foreach (var warning in _warnings)
+    {
+        <div class="alert alert-warning py-2 mb-2">@warning</div>
+    }
+
+    @if (_mxRows.Count > 0)
+    {
+        <h6>MX batch transaction(s) for @ReferenceNbr</h6>
+        <RadzenDataGrid Data="@_mxRows" TItem="MxBatchTxnRow" class="mb-3">
+            <Columns>
+                <RadzenDataGridColumn TItem="MxBatchTxnRow" Property="DateAdded" Title="Date Added" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                <RadzenDataGridColumn TItem="MxBatchTxnRow" Property="Amount" Title="Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
+                <RadzenDataGridColumn TItem="MxBatchTxnRow" Property="Authcode" Title="Auth Code" />
+                <RadzenDataGridColumn TItem="MxBatchTxnRow" Property="MerchantBatchId" Title="Merchant Batch Id" />
+                <RadzenDataGridColumn TItem="MxBatchTxnRow" Property="MerchantBatchIdNum" Title="Merchant Batch Id Num" />
+                <RadzenDataGridColumn TItem="MxBatchTxnRow" Property="TransactionStatus" Title="Status" />
+            </Columns>
+        </RadzenDataGrid>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label d-block">POS Transaction</label>
+            <RadzenTextBox Value="@Detail.PostransactionKey.ToString()" ReadOnly="true" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Organization</label>
+            <RadzenTextBox Value="@($"{Detail.OrganizationName} ({Detail.OrganizationKey})")" ReadOnly="true" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Registration Nbr (RRN)</label>
+            <RadzenTextBox Value="@ReferenceNbr" ReadOnly="true" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Payment Amount</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_amount" Change="@((decimal _) => _convenienceFee = ConvenienceFeeFor(_amount))" Format="0.00" Min="0" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">@(ChargesConvenienceFee ? "Convenience Fee (3% included in amount)" : "Convenience Fee (organization charges none)")</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="_convenienceFee" Format="0.00" Min="0" ReadOnly="@(!ChargesConvenienceFee)" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Payment Date</label>
+            <RadzenDatePicker TValue="DateTime" @bind-Value="_paymentDate" ShowTime="true" HourFormat="12" DateFormat="MM/dd/yyyy h:mm:ss tt" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Confirmation Nbr (auth code)</label>
+            <RadzenTextBox @bind-Value="_confirmationNbr" MaxLength="10" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Shift (started @Detail.DateTimeEntered.ToString("MM/dd/yyyy") by @Detail.EnteredByUser)</label>
+            <RadzenDropDown TValue="int?" Data="@_shifts" TextProperty="@nameof(ShiftChoice.Label)" ValueProperty="@nameof(ShiftChoice.ShiftKey)"
+                @bind-Value="_shiftKey" Placeholder="(no matching shift)" Disabled="@(_shifts.Count == 0)" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Merchant Batch Id / Num</label>
+            <RadzenTextBox Value="@($"{_merchantBatchId ?? "(none)"} / {_merchantBatchIdNum?.ToString() ?? "(none)"}")" ReadOnly="true" Style="width:100%" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label d-block">Posted By</label>
+            <RadzenTextBox Value="@PostedBy" ReadOnly="true" Style="width:100%" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">Payment Notes</label>
+            <RadzenTextArea @bind-Value="_notes" MaxLength="255" Rows="2" Style="width:100%" />
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger mt-3 mb-0">@_error</div>
+    }
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" Disabled="@_saving" />
+        <RadzenButton Text="@(_saving ? "Inserting..." : "Insert Payment")" ButtonStyle="ButtonStyle.Danger"
+            Click="@InsertAsync" Disabled="@(_saving || _blockedReason is not null)" />
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public PosTransactionDetail Detail { get; set; } = null!;
+    [Parameter, EditorRequired] public string ReferenceNbr { get; set; } = "";
+    [Parameter] public DateTime? SaleTime { get; set; }
+    [Parameter] public string? ReqTxnId { get; set; }
+
+    // Every payment inserted from here is posted as "Jarvis Login".
+    private const string PostedBy = "Jarvis Login";
+    private const decimal ConvenienceFeeRate = 0.03m;
+
+    private sealed record ShiftChoice(int? ShiftKey, string Label);
+
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _blockedReason;
+    private List<string> _warnings = [];
+    private List<MxBatchTxnRow> _mxRows = [];
+    private List<ShiftChoice> _shifts = [];
+
+    private decimal _amount;
+    private decimal _convenienceFee;
+    private DateTime _paymentDate;
+    private string _confirmationNbr = "";
+    private int? _shiftKey;
+    private string _notes = "";
+    private string? _merchantBatchId;
+    private long? _merchantBatchIdNum;
+
+    // Organization.MerchantPctToRegistrant null or 0 = the organization charges no convenience fee, so
+    // the whole amount is principal.
+    private bool ChargesConvenienceFee => Detail.MerchantPctToRegistrant is > 0;
+
+    // The 3% fee is already inside the card amount: $6.18 = $6.00 + $0.18.
+    private decimal ConvenienceFeeFor(decimal amount)
+        => ChargesConvenienceFee ? Math.Round(amount - amount / (1 + ConvenienceFeeRate), 2, MidpointRounding.AwayFromZero) : 0m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mxRows = await MxService.GetMxBatchTxnsForReferenceAsync(Detail.OrganizationKey, ReferenceNbr);
+        var mx = _mxRows.Count == 1 ? _mxRows[0] : null;
+
+        // Shift = the organization's shift started on the sale's date by the sale's EnteredByUser.
+        var shifts = await MxService.GetShiftsForPosTransactionAsync(Detail.OrganizationKey, Detail.EnteredByUser, Detail.DateTimeEntered);
+        _shifts = shifts
+            .Select(s => new ShiftChoice(s.ShiftKey,
+                $"{s.ShiftKey} - {s.ShiftStartDate:h:mm tt} to {(s.ShiftEndDate is { } end ? end.ToString("h:mm tt") : "(open)")}"))
+            .ToList();
+        // If more than one, default to the shift that was open when the sale was entered.
+        _shiftKey = (shifts.LastOrDefault(s => s.ShiftStartDate <= Detail.DateTimeEntered && (s.ShiftEndDate is null || s.ShiftEndDate >= Detail.DateTimeEntered))
+            ?? shifts.LastOrDefault(s => s.ShiftStartDate <= Detail.DateTimeEntered)
+            ?? shifts.FirstOrDefault())?.ShiftKey;
+
+        var balance = Detail.TotalDue - Detail.TotalPaid;
+        _amount = mx?.Amount ?? balance;
+        _convenienceFee = ConvenienceFeeFor(_amount);
+        _paymentDate = SaleTime ?? mx?.DateAdded ?? DateTime.Now;
+        _confirmationNbr = mx?.Authcode is { Length: > 10 } code ? code[..10] : mx?.Authcode ?? "";
+        _merchantBatchId = mx?.MerchantBatchId;
+        _merchantBatchIdNum = mx?.MerchantBatchIdNum;
+        _notes = $"Inserted via JarvisAdmin EMV Logs - in MX but not recorded in Jarvis{(ReqTxnId is null ? "" : $" (req_txn_id {ReqTxnId})")}.";
+
+        if (Detail.Payments.Any(p => p.RegistrationNbr == ReferenceNbr))
+            _blockedReason = $"POS transaction {Detail.PostransactionKey} already has a payment with RegistrationNbr {ReferenceNbr}.";
+
+        if (mx is not null && mx.MerchantBatchIdNum is null)
+            _warnings.Add($"MX batch {mx.BatchId} was not found in MxmerchantBatch for this organization - the payment would be inserted without MerchantBatchId / MerchantBatchIdNum.");
+        if (_mxRows.Count == 0)
+            _warnings.Add($"No MX batch transaction with reference # {ReferenceNbr} was found for this organization - the amount and auth code could not be pre-filled. Check them in MX before inserting.");
+        else if (_mxRows.Count > 1)
+            _warnings.Add($"{_mxRows.Count} MX batch transactions have reference # {ReferenceNbr} - pick the right amount and auth code from the list above.");
+        if (_amount != balance)
+            _warnings.Add($"The payment amount {_amount:C} is not the sale's unpaid balance {balance:C} (Total Due {Detail.TotalDue:C} - Total Paid {Detail.TotalPaid:C}).");
+        if (Detail.Payments.Count > 0)
+            _warnings.Add($"This POS transaction already has {Detail.Payments.Count} payment row(s). TotalPaid will be set to this payment's amount (not added to).");
+        if (!ChargesConvenienceFee)
+            _warnings.Add($"{Detail.OrganizationName} does not charge a convenience fee (MerchantPctToRegistrant is {(Detail.MerchantPctToRegistrant?.ToString() ?? "null")}) - the full amount is principal and the convenience fee is $0.00.");
+        if (shifts.Count == 0)
+            _warnings.Add($"No shift for organization {Detail.OrganizationKey} was started on {Detail.DateTimeEntered:MM/dd/yyyy} by '{Detail.EnteredByUser}' - the payment would be inserted with no ShiftKey.");
+        else if (shifts.Count > 1)
+            _warnings.Add($"{shifts.Count} shifts were started on {Detail.DateTimeEntered:MM/dd/yyyy} by '{Detail.EnteredByUser}' - check the selected one.");
+
+        _loading = false;
+    }
+
+    private async Task InsertAsync()
+    {
+        _error = null;
+        if (_amount <= 0)
+            _error = "Enter a payment amount greater than zero.";
+        else if (string.IsNullOrWhiteSpace(_confirmationNbr))
+            _error = "Enter the Confirmation Nbr (the MX authorization code).";
+        if (_error is not null)
+            return;
+
+        var confirmed = await DialogService.Confirm(
+            $"Insert a {_amount:C} EMV payment ({_convenienceFee:C} convenience fee, RegistrationNbr {ReferenceNbr}, auth {_confirmationNbr.Trim()}, shift {(_shiftKey?.ToString() ?? "none")}) on POS transaction {Detail.PostransactionKey} and mark it COMPLETED? This writes to the live Jarvis database.",
+            "Confirm Insert Payment",
+            new ConfirmOptions { OkButtonText = "Insert", CancelButtonText = "Cancel" });
+        if (confirmed != true)
+            return;
+
+        _saving = true;
+        try
+        {
+            // Last check across every Jarvis payment table, not only POS payments (the service re-checks POS inside its transaction).
+            var existing = await MxService.GetReferenceNbrDetailAsync(ReferenceNbr);
+            if (existing.Count > 0)
+            {
+                _error = $"RegistrationNbr {ReferenceNbr} is already recorded in {string.Join(", ", existing.Select(r => r.SourceTable).Distinct())} - nothing was inserted.";
+                return;
+            }
+
+            var paymentKey = await MxService.InsertPosPaymentAsync(new PosPaymentInsert(
+                Detail.PostransactionKey, Detail.OrganizationKey, _amount, _convenienceFee, _paymentDate, ReferenceNbr, _confirmationNbr.Trim(),
+                _shiftKey, string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim(), _merchantBatchId, _merchantBatchIdNum, PostedBy));
+
+            DialogService.Close(paymentKey);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Insert failed - nothing was saved: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

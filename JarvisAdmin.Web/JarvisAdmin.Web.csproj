@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>aspnet-JarvisAdmin.Web-78612a66-9c0b-40a5-ae12-934e5177522b</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="8.0.17" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.17" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.17">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.17" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.17" />
+    <PackageReference Include="Radzen.Blazor" Version="11.1.4" />
+  </ItemGroup>
+
+  <!-- EMV log files (MX Reconciliation > EMV Logs) are local data, not part of the build or publish output. -->
+  <ItemGroup>
+    <Content Remove="JarvisData\**" />
+    <None Remove="JarvisData\**" />
+  </ItemGroup>
+
+</Project>
