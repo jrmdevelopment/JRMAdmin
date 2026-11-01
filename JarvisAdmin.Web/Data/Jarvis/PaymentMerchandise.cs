@@ -49,7 +49,9 @@ public partial class PaymentMerchandise
 
     public byte[]? Ccexpiration { get; set; }
 
-    public int? MerchantBatchId { get; set; }
+    public string? MerchantBatchId { get; set; }
+
+    public long? MerchantBatchIdNum { get; set; }
 
     public bool HaveItem { get; set; }
 

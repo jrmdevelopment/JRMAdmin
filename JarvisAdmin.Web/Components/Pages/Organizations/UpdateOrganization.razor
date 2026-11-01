@@ -1,0 +1,174 @@
+@page "/organizations/update"
+@page "/organizations/update/{OrganizationKey:int}"
+@using JarvisAdmin.Web.Data.Jarvis
+@using JarvisAdmin.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@inject OrganizationService OrgService
+@inject NavigationManager Navigation
+
+<PageTitle>Update Organization - Jarvis Admin</PageTitle>
+
+<div class="jarvis-page-header">
+    <h1>Update Organization</h1>
+    <p>Select an organization to view and change its details. Fields marked <span class="text-danger">*</span> are required.</p>
+</div>
+
+<FormCard Title="Select Organization" Icon="search" Description="Type part of a name to filter the list.">
+    <div class="row g-3">
+        <div class="col-md-8 col-lg-6">
+            <label class="form-label d-block">Organization</label>
+            <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="DisplayName" ValueProperty="OrganizationKey"
+                Value="@OrganizationKey" ValueChanged="@((int? key) => OnOrganizationSelected(key))"
+                AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                FilterOperator="StringFilterOperator.Contains" Placeholder="Select an organization..."
+                Disabled="@_saving" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+@if (_loading)
+{
+    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+}
+else if (_model is not null)
+{
+    <OrganizationForm Model="@_model" />
+
+    @* Pinned to the bottom of the screen, so the save result shows right where Save was clicked. *@
+    <div class="jarvis-form-actions">
+        <RadzenButton Text="Save Changes" Icon="save" ButtonStyle="ButtonStyle.Primary" Click="@SaveAsync" IsBusy="@_saving" />
+        <RadzenButton Text="Undo Changes" ButtonStyle="ButtonStyle.Light" Click="@ReloadAsync" Disabled="@_saving" />
+        @if (_successMessage is not null)
+        {
+            <span class="jarvis-form-message is-success" role="status">@_successMessage</span>
+        }
+        @if (_error is not null)
+        {
+            <span class="jarvis-form-message is-error" role="alert">@_error</span>
+        }
+    </div>
+}
+else if (_error is not null)
+{
+    @* Loading failed, so there's no form or action bar to show the message in. *@
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@code {
+    [Parameter]
+    public int? OrganizationKey { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private List<OrganizationListItem> _organizations = [];
+    private Organization? _model;
+    private int? _loadedKey;
+    private bool _loading;
+    private bool _saving;
+    private string? _error;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _organizations = await OrgService.GetOrganizationListAsync();
+    }
+
+    // The selected organization lives in the URL, so a specific one can be bookmarked or linked to directly.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (OrganizationKey != _loadedKey)
+        {
+            _successMessage = null;
+            await LoadAsync();
+        }
+    }
+
+    private void OnOrganizationSelected(int? key) =>
+        Navigation.NavigateTo(key is null ? "organizations/update" : $"organizations/update/{key}");
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        _model = null;
+        _loadedKey = OrganizationKey;
+
+        if (OrganizationKey is not { } key)
+        {
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            _model = await OrgService.GetOrganizationAsync(key);
+            if (_model is null)
+            {
+                _error = $"No organization was found with key {key}.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"The organization could not be loaded: {ex.GetBaseException().Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _successMessage = null;
+        await LoadAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_model is null)
+        {
+            return;
+        }
+
+        _error = null;
+        _successMessage = null;
+
+        if (!OrganizationService.HasRequiredFields(_model))
+        {
+            _error = "Please fill in all required fields (marked *) before saving.";
+            return;
+        }
+
+        if (OrganizationService.FormatAndValidatePhones(_model) is { } phoneError)
+        {
+            _error = phoneError;
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            string? currentUser = null;
+            if (AuthStateTask is not null)
+            {
+                var authState = await AuthStateTask;
+                currentUser = authState.User.Identity?.Name;
+            }
+
+            await OrgService.UpdateOrganizationAsync(_model, currentUser);
+
+            _successMessage = $"Organization \"{_model.OrganizationName}\" saved.";
+            // The name or status may have changed, so refresh the dropdown text.
+            _organizations = await OrgService.GetOrganizationListAsync();
+        }
+        catch (Exception ex)
+        {
+            // Keep the edits on screen so they can be corrected and saved again.
+            _error = $"The organization could not be saved: {ex.GetBaseException().Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

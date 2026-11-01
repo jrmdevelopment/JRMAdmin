@@ -1,0 +1,778 @@
+@page "/mxreconciliation/add-payment"
+@using JarvisAdmin.Web.Services
+@inject MxReconciliationService MxService
+@inject MxPaymentLookupService MxLookupService
+@inject OrganizationService OrgService
+@inject JarvisPaymentInsertService PaymentInsertService
+@inject DialogService DialogService
+@inject NavigationManager Navigation
+
+@* Records a payment or refund in the payment table the user picks, and adds it to (or, for a refund, takes it off)
+   the parent's TotalPaid/ConvenienceFee totals (see JarvisPaymentInsertService.InsertAsync); the parent's status is
+   not changed. Two ways in:
+   - MX Reconciliation > MX Lookup > "Add Payment in Jarvis" (org, ref and paymentId in the query string): a payment MX
+     has but Jarvis never recorded, pre-filled from the MX payment (API lookup) and its MX batch transaction.
+   - "Add Payment/Refund Manually" (no MX reference): everything entered by hand, e.g. a refund done in MX that won't
+     show up there until its batch closes the next day. *@
+
+<PageTitle>Add Payment in Jarvis - Jarvis Admin</PageTitle>
+
+<div class="jarvis-page-header">
+    <h1>Add Payment in Jarvis</h1>
+    <p>
+        @if (IsManual)
+        {
+            @:Manually record a payment or refund in Jarvis - for example one done in MX that won't show up in MX until its batch closes.
+        }
+        else
+        {
+            @:Record a payment that is in MX but not in Jarvis. Fields are filled in from the MX transaction - check them before inserting.
+        }
+    </p>
+</div>
+
+@if (_loading)
+{
+    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
+}
+else if (_loadError is not null)
+{
+    <div class="alert alert-danger">@_loadError</div>
+    <RadzenButton Text="Back to MX Reconciliation" ButtonStyle="ButtonStyle.Light" Click="@GoBack" />
+}
+else
+{
+    @foreach (var warning in _warnings)
+    {
+        <div class="alert alert-warning py-2 mb-2">@warning</div>
+    }
+    @if (_recordedSummary is not null)
+    {
+        <div class="alert alert-info py-2 mb-2">@_recordedSummary</div>
+    }
+
+    @if (IsManual)
+    {
+        <FormCard Title="Organization" Icon="business" Description="The organization the payment or refund is for.">
+            <div class="row g-3">
+                <div class="col-md-8 col-lg-6">
+                    <label class="form-label d-block">Organization <span class="text-danger">*</span></label>
+                    <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="DisplayName" ValueProperty="OrganizationKey"
+                        Value="@_orgKey" ValueChanged="@((int? key) => OnOrganizationChanged(key))"
+                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                        FilterOperator="StringFilterOperator.Contains" Placeholder="Select an organization..." class="w-100" />
+                </div>
+            </div>
+        </FormCard>
+    }
+    else
+    {
+        <FormCard Title="MX Transaction" Icon="receipt_long" Description="The MX payment this Jarvis payment is being created from.">
+            <div class="jarvis-record-info mb-0">
+                <span class="jarvis-chip">Organization <strong>@_organizationName (@_orgKey)</strong></span>
+                <span class="jarvis-chip">Reference Nbr <strong>@Ref</strong></span>
+                <span class="jarvis-chip">MX Payment Id <strong>@PaymentId</strong></span>
+                @if (_mxAmount is not null)
+                {
+                    <span class="jarvis-chip">Amount <strong>@_mxAmount.Value.ToString("C")</strong></span>
+                }
+                @if (!string.IsNullOrEmpty(_mxAuthCode))
+                {
+                    <span class="jarvis-chip">Auth Code <strong>@_mxAuthCode</strong></span>
+                }
+                @if (_mxCreated is not null)
+                {
+                    <span class="jarvis-chip">Created <strong>@_mxCreated.Value.ToString("MM/dd/yyyy h:mm tt") Central</strong></span>
+                }
+                @if (!string.IsNullOrEmpty(_mxCardType))
+                {
+                    <span class="jarvis-chip">Card <strong>@_mxCardType</strong></span>
+                }
+            </div>
+        </FormCard>
+
+        @if (_mxFields.Count > 0)
+        {
+            <FormCard Title="MX Payment Details" Icon="data_object" Collapsible="true" Description="Everything MX returned for this payment, for reference only.">
+                <RadzenDataGrid Data="@_mxFields" TItem="MxFieldRow" AllowSorting="true" AllowFiltering="true"
+                    AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })" EmptyText="No fields returned.">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="MxFieldRow" Property="Field" Title="Field" Width="320px" />
+                        <RadzenDataGridColumn TItem="MxFieldRow" Property="Value" Title="Value" />
+                    </Columns>
+                </RadzenDataGrid>
+            </FormCard>
+        }
+    }
+
+    <FormCard Title="Payment Table" Icon="table_chart" Description="Payment or refund, which Jarvis payment table it goes in, and the record it belongs to. Look the record up to make sure it's the right one.">
+        <div class="row g-3 align-items-end">
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label d-block">Entry Type <span class="text-danger">*</span> <HelpTip Text="A refund's amount and convenience fee are entered as negative numbers, which takes them off the record's Total Paid and Convenience Fee." /></label>
+                <RadzenDropDown TValue="bool" Data="@_entryTypeOptions" TextProperty="Text" ValueProperty="Value"
+                    Value="@_payment.IsRefund" ValueChanged="@((bool isRefund) => OnEntryTypeChanged(isRefund))" class="w-100" />
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <label class="form-label d-block">Payment Table <span class="text-danger">*</span></label>
+                <RadzenDropDown TValue="JarvisPaymentTable?" Data="@_tableOptions" TextProperty="Text" ValueProperty="Value"
+                    Value="@_table" ValueChanged="@((JarvisPaymentTable? t) => OnTableChanged(t))" Placeholder="Select a table..."
+                    Disabled="@(_orgKey is null)" class="w-100" />
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <label class="form-label d-block">@(_table is { } t ? JarvisPaymentInsertService.ParentKeyLabel(t) : "Record Key") <span class="text-danger">*</span></label>
+                <RadzenNumeric TValue="int?" Value="@_payment.ParentKey" ValueChanged="@((int? key) => OnParentKeyChanged(key))"
+                    ShowUpDown="false" Min="1" Disabled="@(_table is null)" Placeholder="@(_table is null ? "Choose a table first" : "Enter the key")" class="w-100" />
+            </div>
+            <div class="col-auto">
+                <RadzenButton Text="Lookup" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@LookupParentAsync"
+                    IsBusy="@_lookingUp" Disabled="@(_table is null || _payment.ParentKey is null)" />
+            </div>
+        </div>
+
+        @if (_parent is not null)
+        {
+            <div class="jarvis-lookup-result @(_parent.Found ? "is-found" : "is-not-found") mt-3">
+                <div class="jarvis-lookup-result-title">
+                    <RadzenIcon Icon="@(_parent.Found ? "check_circle" : "error")" />
+                    @(_parent.Found ? $"{JarvisPaymentInsertService.ParentKeyLabel(_parentTable!.Value)} {_parentKey}: {_parent.Description}" : _parent.Description)
+                </div>
+                @if (_parent.Details.Count > 0)
+                {
+                    <div class="row g-2 mt-1">
+                        @foreach (var detail in _parent.Details)
+                        {
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="jarvis-lookup-label">@detail.Label</div>
+                                <div class="jarvis-lookup-value">@detail.Value</div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else if (_table is not null && _payment.ParentKey is not null)
+        {
+            <p class="text-muted small mt-3 mb-0">Click Lookup to check this record before inserting.</p>
+        }
+    </FormCard>
+
+    @if (_table is { } selectedTable)
+    {
+        <FormCard Title="@($"{JarvisPaymentInsertService.TableName(selectedTable)} Fields")" Icon="payments"
+            Description="Every field of the payment row. Card number/expiration are left off: Jarvis encrypts them, so they can't be entered here.">
+            <div class="row g-3">
+                <div class="col-12"><h3 class="jarvis-group-title">@EntryWord</h3></div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">@EntryWord Date <span class="text-danger">*</span></label>
+                    <RadzenDatePicker TValue="DateTime" Value="@_payment.PaymentDate" ValueChanged="@((DateTime date) => OnPaymentDateChanged(date))" ShowTime="true" HourFormat="12"
+                        DateFormat="MM/dd/yyyy h:mm:ss tt" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">@EntryWord Amount <span class="text-danger">*</span> <HelpTip Text="@AmountHelp" /></label>
+                    <RadzenNumeric TValue="decimal" Value="@_payment.PaymentAmount" ValueChanged="@((decimal amount) => OnAmountChanged(amount))"
+                        ShowUpDown="false" Format="0.00" Min="@AmountMin" Max="@AmountMax" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Convenience Fee <HelpTip Text="@ConvenienceFeeHelp" /></label>
+                    <RadzenNumeric TValue="decimal" @bind-Value="_payment.ConvenienceFee" ShowUpDown="false" Format="0.00" Min="@AmountMin" Max="@AmountMax" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Payment Type <span class="text-danger">*</span> <HelpTip Text="VISA/MC/DISC/AMEX for online card payments, EMV for terminal (chip/tap) payments. For a refund, the type of the payment being refunded." /></label>
+                    <RadzenDropDown TValue="string" Data="@_paymentTypeOptions" TextProperty="Text" ValueProperty="Value"
+                        @bind-Value="_payment.PaymentType" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Registration Nbr <HelpTip Text="The MX reference number (RRN)." /></label>
+                    <RadzenTextBox @bind-Value="_payment.RegistrationNbr" MaxLength="50" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Confirmation Nbr <HelpTip Text="The MX authorization code. Jarvis uses REFUND for refunds." /></label>
+                    <RadzenTextBox @bind-Value="_payment.ConfirmationNbr" MaxLength="10" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Payment Posted By <span class="text-danger">*</span></label>
+                    <RadzenTextBox @bind-Value="_payment.PaymentPostedBy" MaxLength="30" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Shift <HelpTip Text="The organization's shifts started on the payment date, with who started them. Changes when the date changes. Leave blank for no shift." /></label>
+                    <RadzenDropDown TValue="int?" Data="@_shifts" TextProperty="Label" ValueProperty="ShiftKey"
+                        @bind-Value="_payment.ShiftKey" AllowClear="true" Disabled="@(_shifts.Count == 0)"
+                        Placeholder="@(_shifts.Count == 0 ? "No shifts on this date" : "(no shift)")" class="w-100" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label d-block">@(selectedTable == JarvisPaymentTable.Pos ? "Payment Notes" : "Payment Comments")</label>
+                    <RadzenTextArea @bind-Value="_payment.Comments" MaxLength="@CommentsMaxLength(selectedTable)" Rows="2" class="w-100" />
+                </div>
+
+                <div class="col-12"><h3 class="jarvis-group-title">MX / Processor</h3></div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Payment Id</label>
+                    <RadzenTextBox @bind-Value="_payment.PaymentId" MaxLength="30" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Payment Token</label>
+                    <RadzenTextBox @bind-Value="_payment.PaymentToken" MaxLength="100" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Merchant Batch Id</label>
+                    <RadzenTextBox @bind-Value="_payment.MerchantBatchId" MaxLength="10" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Merchant Batch Id Num</label>
+                    <RadzenNumeric TValue="long?" @bind-Value="_payment.MerchantBatchIdNum" ShowUpDown="false" Min="0" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Valor Txn Id</label>
+                    <RadzenTextBox @bind-Value="_payment.ValorTxnId" MaxLength="20" class="w-100" />
+                </div>
+
+                <div class="col-12"><h3 class="jarvis-group-title">Other</h3></div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">Check Nbr</label>
+                    <RadzenTextBox @bind-Value="_payment.CheckNbr" MaxLength="10" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">NSF Check</label>
+                    <RadzenTextBox @bind-Value="_payment.Nsfcheck" MaxLength="1" class="w-100" />
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block">NSF Fee</label>
+                    <RadzenNumeric TValue="decimal?" @bind-Value="_payment.Nsffee" ShowUpDown="false" Format="0.00" Min="0" class="w-100" />
+                </div>
+                @if (selectedTable != JarvisPaymentTable.Pos)
+                {
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label d-block">Group Id <HelpTip Text="Leave blank to get the organization's next Group Id when the payment is inserted. Parts of a split payment share one, so after an insert it stays filled in for the next part." /></label>
+                        <RadzenNumeric TValue="int?" @bind-Value="_payment.GroupId" ShowUpDown="false" Min="1"
+                            Placeholder="Assigned when inserted" class="w-100" />
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label d-block">Payment Release Date</label>
+                        <RadzenDatePicker TValue="DateTime?" @bind-Value="_payment.PaymentReleaseDate" ShowTime="true" HourFormat="12"
+                            DateFormat="MM/dd/yyyy h:mm tt" AllowClear="true" class="w-100" />
+                    </div>
+                }
+                @if (selectedTable == JarvisPaymentTable.Facility)
+                {
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label d-block">Revenue Code</label>
+                        <RadzenTextBox @bind-Value="_payment.RevenueCode" MaxLength="20" class="w-100" />
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <ToggleField Label="Security Deposit Payment" @bind-Value="_payment.SecurityDepositPayment" />
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <ToggleField Label="Security Deposit Refund" @bind-Value="_payment.SecurityDepositRefund" />
+                    </div>
+                }
+                @if (selectedTable == JarvisPaymentTable.Registration)
+                {
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label d-block">Refund Check Name</label>
+                        <RadzenTextBox @bind-Value="_payment.RefundCheckName" MaxLength="30" class="w-100" />
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label d-block">Refund Check Address</label>
+                        <RadzenTextBox @bind-Value="_payment.RefundCheckAddress" MaxLength="50" class="w-100" />
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <label class="form-label d-block">Refund Check City/St/Zip</label>
+                        <RadzenTextBox @bind-Value="_payment.RefundCheckCityStZip" MaxLength="50" class="w-100" />
+                    </div>
+                }
+            </div>
+        </FormCard>
+    }
+
+    <div class="jarvis-form-actions">
+        <RadzenButton Text="@($"Insert {EntryWord}")" Icon="add_card" ButtonStyle="ButtonStyle.Danger" Click="@InsertAsync"
+            IsBusy="@_saving" Disabled="@(InsertDisabledReason is not null)" />
+        <RadzenButton Text="Back to MX Reconciliation" ButtonStyle="ButtonStyle.Light" Click="@GoBack" Disabled="@_saving" />
+        @if (InsertDisabledReason is { } reason && _successMessage is null && _error is null)
+        {
+            <span class="text-muted small">@reason</span>
+        }
+        @if (_successMessage is not null)
+        {
+            <span class="jarvis-form-message is-success" role="status">@_successMessage</span>
+        }
+        @if (_error is not null)
+        {
+            <span class="jarvis-form-message is-error" role="alert">@_error</span>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] public int Org { get; set; }
+    [SupplyParameterFromQuery] public string Ref { get; set; } = "";
+    [SupplyParameterFromQuery] public string PaymentId { get; set; } = "";
+
+    private sealed record Option<T>(string Text, T Value);
+
+    private static readonly List<Option<bool>> _entryTypeOptions =
+    [
+        new("Payment", false),
+        new("Refund", true),
+    ];
+
+    private static readonly List<Option<JarvisPaymentTable?>> _tableOptions =
+    [
+        new("Registration", JarvisPaymentTable.Registration),
+        new("Facility", JarvisPaymentTable.Facility),
+        new("POS", JarvisPaymentTable.Pos),
+    ];
+
+    // The PaymentType codes the Jarvis payment tables use (see shift_bypaymenttype and the reconciliation queries).
+    private static readonly List<Option<string>> _paymentTypeOptions =
+    [
+        new("Visa (VISA)", "VISA"),
+        new("MasterCard (MC)", "MC"),
+        new("Discover (DISC)", "DISC"),
+        new("American Express (AMEX)", "AMEX"),
+        new("EMV terminal (EMV)", "EMV"),
+        new("Card swipe (SWIPE)", "SWIPE"),
+        new("Cash (CASH)", "CASH"),
+        new("Check (CHK)", "CHK"),
+        new("Scholarship (SCH)", "SCH"),
+    ];
+
+    // Jarvis's ConfirmationNbr for a refund row (payment_issuerefund_returnkey, paymentfacility_addrefund).
+    private const string RefundConfirmationNbr = "REFUND";
+
+    private bool _loading = true;
+    private bool _saving;
+    private string? _loadError;
+    private string? _error;
+    private string? _successMessage;
+    private List<string> _warnings = [];
+
+    // How much of this MX charge is already recorded in Jarvis under its reference number (a split payment is
+    // recorded as several rows), refreshed after each insert so the next part defaults to what's left.
+    private decimal _recordedTotal;
+    private string? _recordedSummary;
+
+    private int? _orgKey;
+    private List<OrganizationListItem> _organizations = [];
+    private string _organizationName = "";
+    private decimal? _merchantPct;
+    private decimal? _mxAmount;
+    private string? _mxAuthCode;
+    private DateTime? _mxCreated;
+    private string? _mxCardType;
+    private string? _cardPaymentType;
+
+    private JarvisPaymentTable? _table;
+    private JarvisPaymentParent? _parent;
+    private JarvisPaymentTable? _parentTable;
+    private int? _parentKey;
+    private bool _lookingUp;
+    private List<MxFieldRow> _mxFields = [];
+    private List<JarvisShiftChoice> _shifts = [];
+    private NewJarvisPayment _payment = new();
+
+    // No MX payment to start from: opened with "Add Payment/Refund Manually".
+    private bool IsManual => string.IsNullOrWhiteSpace(Ref) || string.IsNullOrWhiteSpace(PaymentId);
+
+    private string EntryWord => _payment.IsRefund ? "Refund" : "Payment";
+
+    // Insert is only allowed once the record currently entered has been looked up and found.
+    private bool ParentConfirmed => _parent is { Found: true } && _parentTable == _table && _parentKey == _payment.ParentKey;
+
+    // Why Insert is disabled (shown beside it), or null when it can be clicked.
+    private string? InsertDisabledReason =>
+        _orgKey is null ? "Choose the organization."
+        : _table is null ? "Choose the payment table."
+        : _payment.ParentKey is null ? $"Enter the {JarvisPaymentInsertService.ParentKeyLabel(_table.Value)}, then click Lookup."
+        : _parent is { Found: false } && _parentTable == _table && _parentKey == _payment.ParentKey ? "The record wasn't found for this organization - check the key."
+        : !ParentConfirmed ? "Click Lookup to check the record before inserting."
+        : null;
+
+    private bool ChargesConvenienceFee => _merchantPct is > 0;
+
+    // Refund amounts are entered negative (as Jarvis stores them), payment amounts positive.
+    private decimal? AmountMin => _payment.IsRefund ? null : 0m;
+    private decimal? AmountMax => _payment.IsRefund ? 0m : null;
+
+    private string AmountHelp => _payment.IsRefund
+        ? "The full amount refunded, including any convenience fee being returned, entered as a negative number (e.g. -25.00)."
+        : "The full amount charged, including any convenience fee.";
+
+    private string ConvenienceFeeHelp => _payment.IsRefund
+        ? "The part of the refund that is convenience fee being returned, entered as a negative number (e.g. -0.75). Enter 0 if the fee isn't refunded."
+        : ChargesConvenienceFee
+            ? $"The part of the amount that is the organization's {_merchantPct:P2} convenience fee (already included in the amount). Recalculated when the amount changes."
+            : "This organization charges no convenience fee (Merchant % to Registrant is not set).";
+
+    private static int CommentsMaxLength(JarvisPaymentTable table) => table switch
+    {
+        JarvisPaymentTable.Registration => 500,
+        JarvisPaymentTable.Facility => 250,
+        _ => 255,
+    };
+
+    // Re-initialized whenever the query string changes, not just on first load: going from an MX payment to
+    // "Add Payment/Refund" in the menu reuses this same page instance.
+    private string? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var loadFor = $"{Org}|{Ref}|{PaymentId}";
+        if (loadFor == _loadedFor)
+            return;
+        _loadedFor = loadFor;
+
+        _loading = true;
+        _loadError = _error = _successMessage = _recordedSummary = null;
+        _warnings = [];
+        _recordedTotal = 0m;
+        _orgKey = null;
+        _organizationName = "";
+        _merchantPct = _mxAmount = null;
+        _mxAuthCode = _mxCardType = _cardPaymentType = null;
+        _mxCreated = null;
+        _table = _parentTable = null;
+        _parent = null;
+        _parentKey = null;
+        _mxFields = [];
+        _shifts = [];
+        _payment = new();
+
+        try
+        {
+            if (IsManual)
+                await InitializeManualAsync();
+            else
+                await InitializeFromMxAsync();
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"The page could not be loaded: {ex.GetBaseException().Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task InitializeManualAsync()
+    {
+        _organizations = await OrgService.GetOrganizationListAsync();
+        _payment = new NewJarvisPayment { Comments = "Inserted manually via JarvisAdmin." };
+        if (Org > 0)
+            await OnOrganizationChanged(Org);
+    }
+
+    private async Task InitializeFromMxAsync()
+    {
+        if (Org <= 0)
+        {
+            _loadError = "Open this page from MX Reconciliation > MX Lookup > Add Payment in Jarvis.";
+            return;
+        }
+        if (!await LoadOrganizationAsync(Org))
+        {
+            _loadError = $"Organization {Org} was not found.";
+            return;
+        }
+
+        var lookup = await MxLookupService.LookupPaymentAsync(Org, PaymentId);
+        _mxFields = lookup.Fields;
+        if (lookup.ErrorMessage is not null)
+            _warnings.Add($"The MX payment could not be read ({lookup.ErrorMessage}) - only the MX batch transaction was used to fill in fields.");
+
+        string? Field(string name) => lookup.Fields.FirstOrDefault(f => string.Equals(f.Field, name, StringComparison.OrdinalIgnoreCase))?.Value
+            ?? lookup.Fields.FirstOrDefault(f => f.Field.EndsWith("." + name, StringComparison.OrdinalIgnoreCase))?.Value;
+
+        // The MX batch transaction (already synced into Jarvis) is the most reliable source for amount, auth code
+        // and batch ids; the live MX payment fills in what it doesn't have.
+        var batchTxns = await MxService.GetMxBatchTxnsForReferenceAsync(Org, Ref);
+        var batchTxn = batchTxns.FirstOrDefault(t => t.PaymentId == PaymentId) ?? (batchTxns.Count == 1 ? batchTxns[0] : null);
+        if (batchTxns.Count == 0)
+            _warnings.Add($"No MX batch transaction with reference # {Ref} was found for this organization - Merchant Batch Id / Num could not be filled in.");
+        else if (batchTxn is null)
+            _warnings.Add($"{batchTxns.Count} MX batch transactions have reference # {Ref} - check the amount, auth code and batch ids.");
+        else if (batchTxn.MerchantBatchIdNum is null)
+            _warnings.Add($"MX batch {batchTxn.BatchId} was not found in MxmerchantBatch for this organization - Merchant Batch Id / Num are blank.");
+
+        _mxAmount = batchTxn?.Amount
+            ?? (decimal.TryParse(Field("amount"), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var amount) ? amount : null);
+        _mxAuthCode = batchTxn?.Authcode ?? Field("authCode");
+        if (DateTimeOffset.TryParse(Field("created"), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var createdUtc))
+        {
+            var central = TimeZoneInfo.FindSystemTimeZoneById(EmvLogAnalysisService.DefaultTimeZoneId);
+            _mxCreated = TimeZoneInfo.ConvertTime(createdUtc, central).DateTime;
+        }
+        _mxCardType = Field("cardType");
+        _cardPaymentType = _mxCardType?.Replace(" ", "").ToLowerInvariant() switch
+        {
+            "visa" => "VISA",
+            "mastercard" or "mc" => "MC",
+            "discover" or "disc" => "DISC",
+            "amex" or "americanexpress" => "AMEX",
+            _ => null,
+        };
+
+        _payment = new NewJarvisPayment
+        {
+            PaymentDate = _mxCreated ?? batchTxn?.DateAdded ?? DateTime.Now,
+            PaymentAmount = _mxAmount ?? 0m,
+            RegistrationNbr = Ref.Trim(),
+            ConfirmationNbr = MxAuthCodeForConfirmation,
+            PaymentId = PaymentId.Trim() is { Length: > 30 } id ? id[..30] : PaymentId.Trim(),
+            PaymentToken = Field("paymentToken"),
+            MerchantBatchId = batchTxn?.MerchantBatchId,
+            MerchantBatchIdNum = batchTxn?.MerchantBatchIdNum,
+            Comments = $"Inserted via JarvisAdmin MX Lookup - in MX (payment {PaymentId}) but not recorded in Jarvis.",
+        };
+        _shifts = await PaymentInsertService.GetShiftsForDateAsync(Org, _payment.PaymentDate);
+        if (_mxAmount is null)
+            _warnings.Add("MX did not return the amount - enter it before inserting.");
+
+        // Part of this charge may already be recorded (a split payment): default to what's left of it and to the
+        // Group Id the recorded parts share.
+        await RefreshRecordedAsync();
+        _payment.PaymentAmount = RemainingAmount ?? _payment.PaymentAmount;
+        _payment.ConvenienceFee = ConvenienceFeeFor(_payment.PaymentAmount);
+        _payment.GroupId = await PaymentInsertService.GetGroupIdForReferenceAsync(Ref.Trim());
+    }
+
+    private string? MxAuthCodeForConfirmation => _mxAuthCode?.Trim() is { Length: > 10 } code ? code[..10] : _mxAuthCode?.Trim();
+
+    // Sets the organization the page works on: its name, convenience fee rate and shifts.
+    private async Task<bool> LoadOrganizationAsync(int organizationKey)
+    {
+        var organization = await OrgService.GetOrganizationAsync(organizationKey);
+        if (organization is null)
+            return false;
+
+        _orgKey = organizationKey;
+        _organizationName = organization.OrganizationName;
+        _merchantPct = organization.MerchantPctToRegistrant;
+        return true;
+    }
+
+    // Manual mode: a different organization means a different fee rate and shift list, and the record looked up
+    // (which must belong to the organization) no longer applies.
+    private async Task OnOrganizationChanged(int? organizationKey)
+    {
+        _error = null;
+        _parent = null;
+        _payment.ShiftKey = null;
+        _shifts = [];
+        _orgKey = null;
+        if (organizationKey is not { } key)
+            return;
+
+        try
+        {
+            if (!await LoadOrganizationAsync(key))
+            {
+                _error = $"Organization {key} was not found.";
+                return;
+            }
+            _shifts = await PaymentInsertService.GetShiftsForDateAsync(key, _payment.PaymentDate);
+            if (!_payment.IsRefund)
+                _payment.ConvenienceFee = ConvenienceFeeFor(_payment.PaymentAmount);
+        }
+        catch (Exception ex)
+        {
+            _error = $"The organization could not be loaded: {ex.GetBaseException().Message}";
+        }
+    }
+
+    // The fee is already inside the card amount: at 3%, $6.18 = $6.00 + $0.18.
+    private decimal ConvenienceFeeFor(decimal amount)
+        => ChargesConvenienceFee ? Math.Round(amount - amount / (1 + _merchantPct!.Value), 2, MidpointRounding.AwayFromZero) : 0m;
+
+    // Switching to a refund: the amount turns negative, Jarvis marks refund rows' Confirmation Nbr REFUND, and the
+    // convenience fee is only returned when the user says so. Switching back restores the payment defaults.
+    private void OnEntryTypeChanged(bool isRefund)
+    {
+        _payment.IsRefund = isRefund;
+        if (isRefund)
+        {
+            _payment.PaymentAmount = -Math.Abs(_payment.PaymentAmount);
+            if (string.IsNullOrWhiteSpace(_payment.ConfirmationNbr) || _payment.ConfirmationNbr == MxAuthCodeForConfirmation)
+                _payment.ConfirmationNbr = RefundConfirmationNbr;
+            _payment.ConvenienceFee = 0m;
+        }
+        else
+        {
+            _payment.PaymentAmount = Math.Abs(_payment.PaymentAmount);
+            if (_payment.ConfirmationNbr == RefundConfirmationNbr)
+                _payment.ConfirmationNbr = MxAuthCodeForConfirmation;
+            _payment.ConvenienceFee = ConvenienceFeeFor(_payment.PaymentAmount);
+        }
+    }
+
+    // A different day means a different set of shifts; the chosen one is kept only if it's still in the list.
+    private async Task OnPaymentDateChanged(DateTime date)
+    {
+        var dayChanged = date.Date != _payment.PaymentDate.Date;
+        _payment.PaymentDate = date;
+        if (!dayChanged || _orgKey is not { } orgKey)
+            return;
+
+        try
+        {
+            _shifts = await PaymentInsertService.GetShiftsForDateAsync(orgKey, date);
+        }
+        catch (Exception ex)
+        {
+            _shifts = [];
+            _error = $"The shifts for {date:MM/dd/yyyy} could not be loaded: {ex.GetBaseException().Message}";
+        }
+        if (_payment.ShiftKey is { } key && _shifts.All(s => s.ShiftKey != key))
+            _payment.ShiftKey = null;
+    }
+
+    private void OnAmountChanged(decimal amount)
+    {
+        _payment.PaymentAmount = amount;
+        if (!_payment.IsRefund)
+            _payment.ConvenienceFee = ConvenienceFeeFor(amount);
+    }
+
+    // Changing the table or the key clears the last lookup, so Insert always goes on a record that was just checked.
+    private void OnTableChanged(JarvisPaymentTable? table)
+    {
+        _table = table;
+        _parent = null;
+        _error = null;
+        // Online registration/facility payments are recorded by card brand; POS payments come from the EMV terminal.
+        if (!IsManual)
+            _payment.PaymentType = table == JarvisPaymentTable.Pos ? "EMV" : _cardPaymentType ?? "";
+    }
+
+    private void OnParentKeyChanged(int? key)
+    {
+        _payment.ParentKey = key;
+        _parent = null;
+    }
+
+    private async Task LookupParentAsync()
+    {
+        if (_table is not { } table || _payment.ParentKey is not { } key || _orgKey is not { } orgKey)
+            return;
+
+        _lookingUp = true;
+        try
+        {
+            _parent = await PaymentInsertService.DescribeParentAsync(table, key, orgKey);
+        }
+        catch (Exception ex)
+        {
+            _parent = new(false, $"Lookup failed: {ex.GetBaseException().Message}", []);
+        }
+        finally
+        {
+            _parentTable = table;
+            _parentKey = key;
+            _lookingUp = false;
+        }
+    }
+
+    private async Task InsertAsync()
+    {
+        _error = null;
+        _successMessage = null;
+        if (_table is not { } table || _orgKey is not { } orgKey)
+            return;
+
+        var entry = EntryWord.ToLowerInvariant();
+        if (_payment.ParentKey is null)
+            _error = $"Enter the {JarvisPaymentInsertService.ParentKeyLabel(table)}.";
+        else if (!ParentConfirmed)
+            _error = _parent is { Found: false } ? _parent.Description : $"Click Lookup to check {JarvisPaymentInsertService.ParentKeyLabel(table)} {_payment.ParentKey} before inserting.";
+        else if (_payment.IsRefund ? _payment.PaymentAmount >= 0 : _payment.PaymentAmount <= 0)
+            _error = _payment.IsRefund ? "Enter the refund amount as a negative number (e.g. -25.00)." : "Enter a payment amount greater than zero.";
+        else if (_payment.IsRefund ? _payment.ConvenienceFee > 0 : _payment.ConvenienceFee < 0)
+            _error = _payment.IsRefund ? "Enter the refunded convenience fee as a negative number, or 0." : "The convenience fee can't be negative.";
+        else if (Math.Abs(_payment.ConvenienceFee) > Math.Abs(_payment.PaymentAmount))
+            _error = $"The convenience fee can't be more than the {entry} amount.";
+        else if (string.IsNullOrWhiteSpace(_payment.PaymentType))
+            _error = "Choose the payment type.";
+        else if (string.IsNullOrWhiteSpace(_payment.PaymentPostedBy))
+            _error = "Enter who the payment is posted by.";
+        if (_error is not null)
+            return;
+
+        // Not blocked (MX amounts can be adjusted), but recording more than MX charged is called out before inserting.
+        var overAmount = "";
+        if (!IsManual && !_payment.IsRefund)
+        {
+            await RefreshRecordedAsync();
+            if (_mxAmount is { } mxAmount && _recordedTotal + _payment.PaymentAmount > mxAmount)
+                overAmount = $" NOTE: with this payment, {(_recordedTotal + _payment.PaymentAmount):C} would be recorded for this reference number - more than the {mxAmount:C} MX charged.";
+        }
+
+        var tableName = JarvisPaymentInsertService.TableName(table);
+        var parentLabel = $"{JarvisPaymentInsertService.ParentKeyLabel(table)} {_payment.ParentKey}";
+        var amountText = Signed(_payment.PaymentAmount);
+        var totals = _payment.IsRefund
+            ? $"and take {Math.Abs(_payment.PaymentAmount):C} off its Total Paid and {Math.Abs(_payment.ConvenienceFee):C} off its Convenience Fee" +
+              (table == JarvisPaymentTable.Facility ? $" (and {Math.Abs(_payment.PaymentAmount - _payment.ConvenienceFee):C} off its Total Due)" : "") +
+              (table == JarvisPaymentTable.Registration ? $" (and {Math.Abs(_payment.ConvenienceFee):C} off its Total Invoice)" : "")
+            : $"and add {_payment.PaymentAmount:C} to its Total Paid and {_payment.ConvenienceFee:C} to its Convenience Fee";
+        var confirmed = await DialogService.Confirm(
+            $"Insert a {amountText} {_payment.PaymentType} {entry} (fee {Signed(_payment.ConvenienceFee)}, Reference Nbr {_payment.RegistrationNbr ?? "none"}) into {tableName} for {parentLabel}, " +
+            $"{totals}?{overAmount} This writes to the live Jarvis database.",
+            $"Confirm Insert {EntryWord}",
+            new ConfirmOptions { OkButtonText = "Insert", CancelButtonText = "Cancel" });
+        if (confirmed != true)
+            return;
+
+        _saving = true;
+        try
+        {
+            var insertedKey = await PaymentInsertService.InsertAsync(table, orgKey, _payment);
+
+            // Ready for the next part of a split payment: a new record to look up, and (from MX) whatever is left of
+            // the charge.
+            _payment.ParentKey = null;
+            _parent = null;
+            if (!IsManual && !_payment.IsRefund)
+            {
+                await RefreshRecordedAsync();
+                if (RemainingAmount is { } remaining)
+                {
+                    _payment.PaymentAmount = remaining;
+                    _payment.ConvenienceFee = ConvenienceFeeFor(remaining);
+                }
+            }
+
+            _successMessage = $"{_payment.PaymentType} {entry} inserted into {tableName} (key {insertedKey}) for {parentLabel}" +
+                (table != JarvisPaymentTable.Pos && _payment.GroupId is { } groupId ? $", Group Id {groupId}." : ".") +
+                (!IsManual && !_payment.IsRefund && RemainingAmount is > 0 ? $" {RemainingAmount:C} of the MX charge is still unrecorded - enter the next record to add it there." : "");
+        }
+        catch (Exception ex)
+        {
+            _error = $"Insert failed - nothing was saved: {ex.GetBaseException().Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // -$25.00 rather than the accounting-style ($25.00) the C format gives negatives.
+    private static string Signed(decimal amount) => amount < 0 ? $"-{Math.Abs(amount):C}" : amount.ToString("C");
+
+    // What's left of the MX charge after the parts already recorded in Jarvis, or null when MX gave no amount.
+    private decimal? RemainingAmount => _mxAmount is { } mxAmount ? Math.Max(mxAmount - _recordedTotal, 0m) : null;
+
+    private async Task RefreshRecordedAsync()
+    {
+        var recorded = await MxService.GetReferenceNbrDetailAsync(Ref.Trim());
+        _recordedTotal = recorded.Sum(r => r.PaymentAmount);
+        _recordedSummary = recorded.Count == 0
+            ? null
+            : $"Reference Nbr {Ref} already has {recorded.Count} payment(s) in Jarvis totaling {_recordedTotal:C} " +
+              $"({string.Join(", ", recorded.GroupBy(r => r.SourceTable).Select(g => $"{g.Count()} in {g.Key}"))})" +
+              (RemainingAmount is { } remaining ? $" - {remaining:C} of the MX charge is unrecorded. Add more only if this payment is split across records." : ".");
+    }
+
+    private void GoBack() => Navigation.NavigateTo("mxreconciliation");
+}

@@ -183,3 +183,312 @@ a {
 .jarvis-main {
     padding: 2rem 1.5rem;
 }
+
+/* HelpTip: the "?" icon after a field label that shows help text on hover/focus. */
+.jarvis-help {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 0.25rem;
+    color: var(--jarvis-blue);
+    cursor: help;
+}
+
+    .jarvis-help .rzi {
+        font-size: 1rem;
+    }
+
+/* Page header used above forms. */
+.jarvis-page-header {
+    margin-bottom: 1.5rem;
+}
+
+    .jarvis-page-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .jarvis-page-header p {
+        color: #6b7280;
+        margin-bottom: 0;
+    }
+
+/* FormCard: a section of a form shown as a card with an icon header. */
+.jarvis-card {
+    background: #fff;
+    border: 1px solid var(--jarvis-border);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(45, 55, 66, 0.04), 0 4px 12px rgba(45, 55, 66, 0.05);
+    margin-bottom: 1.25rem;
+}
+
+.jarvis-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--jarvis-border);
+}
+
+.jarvis-card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.625rem;
+    background: rgba(14, 118, 188, 0.1);
+    color: var(--jarvis-blue);
+}
+
+    .jarvis-card-icon .rzi {
+        font-size: 1.375rem;
+    }
+
+.jarvis-card-heading {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.jarvis-card-title {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.jarvis-card-subtitle {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    margin: 0.125rem 0 0;
+}
+
+.jarvis-card-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    flex-shrink: 0;
+    border: 1px solid var(--jarvis-border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--jarvis-blue);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+}
+
+    .jarvis-card-toggle:hover {
+        background: rgba(14, 118, 188, 0.06);
+    }
+
+.jarvis-card-body {
+    padding: 1.25rem;
+}
+
+    .jarvis-card-body .form-label {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #4b5563;
+        margin-bottom: 0.375rem;
+    }
+
+/* Small subheading that groups related fields inside a card. */
+.jarvis-group-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--jarvis-blue-dark);
+    margin: 0.5rem 0 0;
+    padding-bottom: 0.375rem;
+    border-bottom: 1px dashed var(--jarvis-border);
+}
+
+.row > .col-12:first-child > .jarvis-group-title {
+    margin-top: 0;
+}
+
+/* ToggleField: an on/off setting shown as a switch tile. */
+.jarvis-toggle-tile {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 100%;
+    min-height: 2.75rem;
+    padding: 0 0.75rem 0 0;
+    border: 1px solid var(--jarvis-border);
+    border-radius: 0.5rem;
+    background: #fafbfd;
+    transition: border-color 0.15s, background-color 0.15s;
+}
+
+    .jarvis-toggle-tile:hover:not(.is-disabled) {
+        border-color: rgba(14, 118, 188, 0.4);
+        background: #fff;
+    }
+
+    .jarvis-toggle-tile.is-disabled {
+        opacity: 0.55;
+    }
+
+.jarvis-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex-grow: 1;
+    min-width: 0;
+    align-self: stretch;
+    padding: 0.5rem 0 0.5rem 0.75rem;
+    border: 0;
+    background: none;
+    color: var(--jarvis-dark);
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+    .jarvis-toggle:disabled {
+        cursor: not-allowed;
+    }
+
+    .jarvis-toggle:focus-visible {
+        outline: 2px solid var(--jarvis-blue);
+        outline-offset: 2px;
+        border-radius: 0.5rem;
+    }
+
+.jarvis-toggle-track {
+    position: relative;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: #cbd0da;
+    transition: background-color 0.15s;
+}
+
+.jarvis-toggle-thumb {
+    position: absolute;
+    top: 0.125rem;
+    left: 0.125rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    transition: transform 0.15s;
+}
+
+.jarvis-toggle[aria-checked="true"] .jarvis-toggle-track {
+    background: var(--jarvis-blue);
+}
+
+.jarvis-toggle[aria-checked="true"] .jarvis-toggle-thumb {
+    transform: translateX(1rem);
+}
+
+/* Read-only record details (key, dates) shown as chips above a form. */
+.jarvis-record-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.jarvis-chip {
+    display: inline-flex;
+    gap: 0.375rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--jarvis-border);
+    font-size: 0.8125rem;
+    color: #6b7280;
+}
+
+    .jarvis-chip strong {
+        color: var(--jarvis-dark);
+        font-weight: 600;
+    }
+
+/* Save/Reset buttons pinned to the bottom of the screen while scrolling a long form. */
+.jarvis-form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 -1.5rem -2rem;
+    padding: 0.875rem 1.5rem;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--jarvis-border);
+    box-shadow: 0 -4px 12px rgba(45, 55, 66, 0.06);
+}
+
+/* Save result shown in the action bar, next to the buttons. */
+.jarvis-form-message {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+    .jarvis-form-message.is-success {
+        background: #e8f6ee;
+        color: #146c43;
+    }
+
+    .jarvis-form-message.is-error {
+        background: #fdecec;
+        color: #b02a37;
+    }
+
+/* Result of looking up a record (e.g. Add Payment in Jarvis > Lookup): green when found, red when not. */
+.jarvis-lookup-result {
+    padding: 0.875rem 1rem;
+    border-radius: 0.625rem;
+    border: 1px solid;
+}
+
+    .jarvis-lookup-result.is-found {
+        background: #f0faf4;
+        border-color: #b7e4c7;
+    }
+
+    .jarvis-lookup-result.is-not-found {
+        background: #fdf2f2;
+        border-color: #f5c2c7;
+    }
+
+.jarvis-lookup-result-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.jarvis-lookup-result.is-found .jarvis-lookup-result-title {
+    color: #146c43;
+}
+
+.jarvis-lookup-result.is-not-found .jarvis-lookup-result-title {
+    color: #b02a37;
+}
+
+.jarvis-lookup-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #6b7280;
+}
+
+.jarvis-lookup-value {
+    font-size: 0.9375rem;
+    color: var(--jarvis-dark);
+}

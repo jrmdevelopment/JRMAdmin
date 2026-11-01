@@ -40,7 +40,9 @@
         "launchBrowser": true,
         "applicationUrl": "http://localhost:5071",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Production"
+          "ASPNETCORE_ENVIRONMENT": "Production",
+          "EmvLogs__Folder": "JarvisData/EMVLogs",
+          "EmvLogs__PosRegisterLog": "posregister.log"
         }
       }
     }

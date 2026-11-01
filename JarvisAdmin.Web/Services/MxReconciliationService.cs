@@ -778,9 +778,8 @@ public class MxReconciliationService(IDbContextFactory<JarvisDbContext> dbFactor
             .Select(x => new RegistrationNbrAmountRow(x.RegistrationNbr!, x.DonationAmount, null))
             .ToListAsync());
 
-        // Only table where MerchantBatchId is int? instead of long? - cast to compare against BatchNumber.
         rows.AddRange(await db.PaymentMerchandises
-            .Where(x => x.RegistrationNbr != null && (long?)x.MerchantBatchId == batchNumber && (x.PaymentType != "CREDIT" && !((x.PaymentComments ?? "").StartsWith("Used Credit from:") && (db.AccountCreditReturnSources.Any(csr => csr.RegistrationNbr == x.RegistrationNbr) || db.AccountCreditManualSources.Any(csm => csm.RegistrationNbr == x.RegistrationNbr)))))
+            .Where(x => x.RegistrationNbr != null && x.MerchantBatchIdNum == batchNumber &&(x.PaymentType != "CREDIT" && !((x.PaymentComments ?? "").StartsWith("Used Credit from:") && (db.AccountCreditReturnSources.Any(csr => csr.RegistrationNbr == x.RegistrationNbr) || db.AccountCreditManualSources.Any(csm => csm.RegistrationNbr == x.RegistrationNbr)))))
             .Select(x => new RegistrationNbrAmountRow(x.RegistrationNbr!, x.PaymentAmount, null))
             .ToListAsync());
 
@@ -885,11 +884,9 @@ public class MxReconciliationService(IDbContextFactory<JarvisDbContext> dbFactor
             .Select(x => new ReferenceNbrDetailRow("AccountDonation", x.DonationAmount, x.ConfirmationNbr, x.MerchantBatchId, x.MerchantBatchIdNum, x.PaymentDate))
             .ToListAsync());
 
-        // Only table where MerchantBatchId is int? instead of string?, and it has no MerchantBatchIdNum column.
         rows.AddRange(await db.PaymentMerchandises
             .Where(x => x.RegistrationNbr == referenceNbr)
-            .Select(x => new ReferenceNbrDetailRow("PaymentMerchandise", x.PaymentAmount, x.ConfirmationNbr,
-                x.MerchantBatchId == null ? null : x.MerchantBatchId.ToString(), (long?)x.MerchantBatchId, x.PaymentDate))
+            .Select(x => new ReferenceNbrDetailRow("PaymentMerchandise", x.PaymentAmount, x.ConfirmationNbr, x.MerchantBatchId, x.MerchantBatchIdNum, x.PaymentDate))
             .ToListAsync());
 
         return rows.OrderByDescending(r => r.PaymentDate).ToList();
@@ -913,8 +910,7 @@ public class MxReconciliationService(IDbContextFactory<JarvisDbContext> dbFactor
 
     // Jarvis-side card/EMV payment rows that were never fully stamped by the nightly reconciliation
     // job - flagged if EITHER MerchantBatchId (string) or MerchantBatchIdNum (long) is null, so a
-    // half-stamped row counts as blank too (PaymentMerchandise has only the int MerchantBatchId, so
-    // that one column is its blank signal). Across all history except today and yesterday (today's
+    // half-stamped row counts as blank too. Across all history except today and yesterday (today's
     // batch hasn't run yet, and yesterday's may still be settling, so blanks there are expected,
     // not a discrepancy). Scoped to MX-gateway organizations - several of the 16 payment tables
     // don't carry OrganizationKey directly and need a join chain through their parent entity
@@ -1215,11 +1211,10 @@ public class MxReconciliationService(IDbContextFactory<JarvisDbContext> dbFactor
             select new BlankMerchantIdRow($"PostransactionPayment:{x.PostransactionPaymentKey}", "PostransactionPayment", o.OrganizationName, x.RegistrationNbr, x.PaymentAmount, x.PaymentDate, x.PaymentType)
         ).ToListAsync());
 
-        // No MerchantBatchIdNum column on this table - MerchantBatchId (int?) is the equivalent "blank" signal.
         rows.AddRange(await (
             from x in db.PaymentMerchandises
             join o in qualifyingOrgs on x.OrganizationKey equals o.OrganizationKey
-            where x.RegistrationNbr != null && x.MerchantBatchId == null && x.PaymentType != "SCH" && x.PaymentType != "CHK" && (x.PaymentType != "CREDIT" && !((x.PaymentComments ?? "").StartsWith("Used Credit from:") && (db.AccountCreditReturnSources.Any(csr => csr.RegistrationNbr == x.RegistrationNbr) || db.AccountCreditManualSources.Any(csm => csm.RegistrationNbr == x.RegistrationNbr)))) && x.PaymentDate.Date < cutoff
+            where x.RegistrationNbr != null && (x.MerchantBatchId == null || x.MerchantBatchIdNum == null) &&x.PaymentType != "SCH" && x.PaymentType != "CHK" && (x.PaymentType != "CREDIT" && !((x.PaymentComments ?? "").StartsWith("Used Credit from:") && (db.AccountCreditReturnSources.Any(csr => csr.RegistrationNbr == x.RegistrationNbr) || db.AccountCreditManualSources.Any(csm => csm.RegistrationNbr == x.RegistrationNbr)))) && x.PaymentDate.Date < cutoff
                   && (o.OrganizationKey != 128 || x.PaymentDate.Date >= org128GoLive)
                   && (o.OrganizationKey != 34 || x.PaymentDate.Date >= org34ExcludeBefore)
                   && (o.OrganizationKey != 103 || x.PaymentDate.Date >= org103ExcludeBefore)

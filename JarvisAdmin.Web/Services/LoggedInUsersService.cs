@@ -12,19 +12,23 @@ public class LoggedInUsersService(JarvisDbContext db)
     // Same window as admin_loggedinusers.
     private const int ActiveWindowMinutes = 30;
 
-    // LastAccess is written in DB server time, and the server runs on Pacific time.
-    private static readonly TimeZoneInfo ServerTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-
+    // The Jarvis app passes LastAccess into userdetails_updatelastaccess itself, already in the
+    // organization's own time zone - so it is displayed as-is, and the active window is measured against
+    // "now" in each organization's zone.
     public async Task<List<LoggedInUserRow>> GetLoggedInUsersAsync()
     {
-        // DateTime.Now translates to GETDATE(), so the window is measured against the DB server clock
-        // exactly like the old proc, regardless of the web server's clock/zone.
+        var utcNow = DateTime.UtcNow;
+
+        // SQL prefilter against the earliest local clock we support (Pacific); the exact per-zone check
+        // happens in memory below.
+        var earliestCutoff = TimeZoneInfo.ConvertTimeFromUtc(utcNow, ToTimeZoneInfo(4)).AddMinutes(-ActiveWindowMinutes);
+
         var rows = await (
             from u in db.UserDetails
             join o in db.Organizations on u.OrganizationKey equals o.OrganizationKey
             join m in db.AspnetMemberships on u.UserId equals m.UserId into memberships
             from m in memberships.DefaultIfEmpty()
-            where u.LastAccess != null && u.LastAccess.Value.AddMinutes(ActiveWindowMinutes) > DateTime.Now
+            where u.LastAccess != null && u.LastAccess.Value > earliestCutoff
             orderby o.OrganizationName, u.LastAccess descending
             select new
             {
@@ -36,7 +40,10 @@ public class LoggedInUsersService(JarvisDbContext db)
             }
         ).ToListAsync();
 
-        return rows.Select(r =>
+        return rows
+            .Where(r => r.LastAccess > TimeZoneInfo.ConvertTimeFromUtc(utcNow, ToTimeZoneInfo(r.TimeZone))
+                .AddMinutes(-ActiveWindowMinutes))
+            .Select(r =>
         {
             var zone = ToTimeZoneInfo(r.TimeZone);
             return new LoggedInUserRow
@@ -48,7 +55,7 @@ public class LoggedInUsersService(JarvisDbContext db)
                 LoggedIn = r.LastLoginUtc is { } utc
                     ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone)
                     : null,
-                LastActivity = TimeZoneInfo.ConvertTime(DateTime.SpecifyKind(r.LastAccess, DateTimeKind.Unspecified), ServerTimeZone, zone)
+                LastActivity = r.LastAccess
             };
         }).ToList();
     }

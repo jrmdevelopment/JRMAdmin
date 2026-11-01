@@ -1,0 +1,21 @@
+@* A small "?" icon placed after a field label that shows explanatory text on hover. It's deliberately left out of
+   the tab order so tabbing moves straight from field to field; screen readers still get the text via aria-label.
+   Usage: <label>After-Hours Phone <HelpTip Text="..." /></label> *@
+@inject TooltipService TooltipService
+
+<span @ref="_element" class="jarvis-help" role="img" aria-label="@Text"
+      @onmouseenter="Open" @onmouseleave="Close">
+    <RadzenIcon Icon="help_outline" />
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Text { get; set; } = "";
+
+    private ElementReference _element;
+
+    private void Open() =>
+        TooltipService.Open(_element, Text, new TooltipOptions { Position = TooltipPosition.Top, Style = "max-width: 320px" });
+
+    private void Close() => TooltipService.Close();
+}

@@ -1,0 +1,463 @@
+@using JarvisAdmin.Web.Data.Jarvis
+@using JarvisAdmin.Web.Services
+
+@* The organization detail fields, shared by the Add and Update Organization pages. The encrypted
+   MerchantAcctKey/MerchantAcctNbr/MerchantSecretKey/EMVAppId columns are deliberately left off: the main
+   Jarvis app encrypts them before calling admin_updatemerchantapi/admin_updateemvapi, so plain text typed
+   here would break payments. *@
+
+@if (Model.OrganizationKey != 0)
+{
+    @* Set automatically by the system, so shown read-only once the organization exists. *@
+    <div class="jarvis-record-info">
+        <span class="jarvis-chip">Organization Key <strong>@Model.OrganizationKey</strong></span>
+        <span class="jarvis-chip">Date Added <strong>@Model.DateAdded.ToString("MM/dd/yyyy h:mm tt")</strong></span>
+        <span class="jarvis-chip">Last Updated By <strong>@(Model.LastUpdatedBy ?? "-")</strong></span>
+    </div>
+}
+
+<FormCard Title="Organization and Contact Information" Icon="business" Description="Who the organization is, where it is, and how to reach it.">
+    <div class="row g-3">
+        <div class="col-12"><h3 class="jarvis-group-title">Organization</h3></div>
+        <div class="col-md-6 col-lg-4">
+            <label class="form-label d-block">Organization Name <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.OrganizationName" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label d-block">Status</label>
+            <RadzenDropDown TValue="string" Data="@_statusOptions" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="Model.Status" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label d-block">Time Zone</label>
+            <RadzenDropDown TValue="int" Data="@_timeZoneOptions" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="Model.TimeZone" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label d-block">Standings Type <span class="text-danger">*</span> <HelpTip Text="Determines the way league standings are computed. Default is 'Head'." /></label>
+            <RadzenDropDown TValue="string" Data="@WithCurrentValue(_standingsTypeOptions, Model.StandingsType)" @bind-Value="Model.StandingsType" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label d-block">Tax ID <HelpTip Text="Displayed on some reports, mostly for aftercare." /></label>
+            <RadzenTextBox @bind-Value="Model.TaxId" MaxLength="20" class="w-100" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Address</h3></div>
+        <div class="col-md-6">
+            <label class="form-label d-block">Address <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.OrganizationAddr" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-md-3">
+            <label class="form-label d-block">City <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.OrganizationCity" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-4 col-sm-2 col-md-1">
+            <label class="form-label d-block">State <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.OrganizationSt" MaxLength="2" class="w-100" />
+        </div>
+        <div class="col-8 col-sm-4 col-md-2">
+            <label class="form-label d-block">Zip <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.OrganizationZip" MaxLength="10" class="w-100" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Contact</h3></div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Contact Name <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.ContactName" MaxLength="30" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Contact Phone <span class="text-danger">*</span></label>
+            <RadzenMask @bind-Value="Model.ContactPhone" Mask="***-***-****" CharacterPattern="[0-9]" Pattern="[^0-9]" Placeholder="999-999-9999" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Contact Email <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="Model.ContactEmailAddr" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">After-Hours Phone <HelpTip Text="Displayed on some reports like a facility contract, but mostly unused." /></label>
+            <RadzenMask @bind-Value="Model.AfterhoursPhone" Mask="***-***-****" CharacterPattern="[0-9]" Pattern="[^0-9]" Placeholder="999-999-9999" class="w-100" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Online &amp; System</h3></div>
+        <div class="col-sm-6 col-lg-4">
+            <label class="form-label d-block">Name For Lookup <HelpTip Text="Used when a customer logs in online to determine the organization." /></label>
+            <RadzenTextBox @bind-Value="Model.NameForLookup" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-4">
+            <label class="form-label d-block">Domain Name <HelpTip Text="Only used online, so a customer can return to the organization's website if they choose." /></label>
+            <RadzenTextBox @bind-Value="Model.DomainName" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-4">
+            <label class="form-label d-block">POS Screen Name</label>
+            @* Set by the system: new organizations get POSRegister.aspx (see CreateNewOrganization); existing
+               ones keep whatever screen they already use, e.g. the older pos.aspx. *@
+            <RadzenTextBox Value="@Model.PosscreenName" ReadOnly="true" tabindex="-1" class="w-100" />
+        </div>
+        <div class="col-12">
+            <label class="form-label d-block">Internal Notes (Jarvis Comments)</label>
+            <RadzenTextArea @bind-Value="Model.JarvisComments" Rows="3" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+<FormCard Title="Fee Structure" Icon="home_work" Description="Whether the organization charges residents and non-residents differently, and how residency is checked.">
+    <div class="row g-3">
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Fee Structure <span class="text-danger">*</span></label>
+            <RadzenDropDown TValue="string" Data="@WithCurrentValue(_feeStructureOptions, Model.FeeStructure)" Value="@Model.FeeStructure"
+                ValueChanged="@((string value) => OnFeeStructureChanged(value))" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Require Physical Address" @bind-Value="Model.RequirePhysicalAddr"
+                Help="Only select if the organization is a resident/non-resident setup, so PO Boxes cannot be used." />
+        </div>
+        @* Residency checks only apply to a Resident fee structure, so they're shown off and locked otherwise
+           (OrganizationService also clears them on save, for older records that have them set anyway). *@
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Validate Residency By Address" Value="@(IsResident && Model.ValidateResidencyByAddr)"
+                ValueChanged="@((bool value) => Model.ValidateResidencyByAddr = value)" Disabled="@(!IsResident)" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Validate Residency By Zip" Value="@(IsResident && Model.ValidateResidencyByZip)"
+                ValueChanged="@((bool value) => Model.ValidateResidencyByZip = value)" Disabled="@(!IsResident)" />
+        </div>
+    </div>
+</FormCard>
+
+<FormCard Title="Email &amp; Notifications" Icon="mail" Description="Outgoing email, report and receipt details, and text message reminders.">
+    <div class="row g-3">
+        <div class="col-12"><h3 class="jarvis-group-title">Outgoing Email</h3></div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">From Email Address</label>
+            <RadzenTextBox @bind-Value="Model.FromEmailAddress" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">From Email Password</label>
+            <RadzenPassword @bind-Value="Model.FromEmailPw" MaxLength="20" class="w-100" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Reports &amp; Receipts</h3></div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Report Email</label>
+            <RadzenTextBox @bind-Value="Model.ReportEmail" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Report Phone</label>
+            <RadzenMask @bind-Value="Model.ReportPhone" Mask="***-***-****" CharacterPattern="[0-9]" Pattern="[^0-9]" Placeholder="999-999-9999" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Report Logo</label>
+            <RadzenTextBox @bind-Value="Model.ReportLogo" MaxLength="50" class="w-100" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Text Reminders</h3></div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Text Game Reminders" @bind-Value="Model.TextGameReminders" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Game Time Text Notification (minutes before)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="Model.GameTimeTextNotificationMinutes" ShowUpDown="false" Min="0" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Text Practice Reminders" @bind-Value="Model.TextPracticeReminders" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Practice Time Text Notification (minutes before)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="Model.PracticeTimeTextNotificationMinutes" ShowUpDown="false" Min="0" class="w-100" />
+        </div>
+        @* Facility reservation notifications aren't in use yet, so these two are disabled. *@
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Facility Reservation Text Notification (minutes before)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="Model.FacilityResvTextNotificationMinutes" Disabled="true" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Facility Reservation Invoice Reminder (days)</label>
+            <RadzenNumeric TValue="int?" @bind-Value="Model.FacilityResvNbrDaysInvoiceReminder" Disabled="true" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+<FormCard Title="Organization Preferences" Icon="tune" Description="How participants register, and which Jarvis programs and features the organization uses.">
+    <div class="row g-3">
+        <div class="col-12"><h3 class="jarvis-group-title">General</h3></div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Require Payment When Registering" @bind-Value="Model.RequirePaymentWhenRegistering" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Restrict Unpaid Registrants" @bind-Value="Model.RestrictUnpaidRegistrants"
+                Help="If selected, any unpaid participant will not be able to register until their balance is paid in full." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Require Participant Middle Name" @bind-Value="Model.RequireParticipantMiddleName"
+                Help="Only requested by one organization, so leave unchecked." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Lock Birthdate" @bind-Value="Model.LockBirthdate"
+                Help="Once a birthdate is entered, an online user can no longer change it." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Medical Release Screen" @bind-Value="Model.MedicalReleaseScreen" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Use Document Manager" @bind-Value="Model.UseDocumentManager"
+                Help="The organization can use the Document Manager functionality." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Military Discount" @bind-Value="Model.MilitaryDiscount"
+                Help="The organization can use the military discount functionality." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Have Aftercare Programs" @bind-Value="Model.HaveAftercarePrograms" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Require Payment for Team Registration" @bind-Value="Model.TeamRegPmtReqd" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Offer Scholarships" @bind-Value="Model.OfferScholarships" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Revenue Code Required" @bind-Value="Model.RevenueCodeRequired" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <label class="form-label d-block">Account Credit Revenue Code</label>
+            <RadzenTextBox @bind-Value="Model.AccountCreditRevenueCode" MaxLength="20" class="w-100" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Memberships &amp; Season Passes</h3></div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Use Membership System" @bind-Value="Model.UseMembershipSystem" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Use Season Pass System" @bind-Value="Model.UseSeasonPassSystem" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Online Season Pass" @bind-Value="Model.OnlineSeasonPass" />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Facilities</h3></div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Online Reserve Facilities" @bind-Value="Model.OnlineReserveFacilities" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Online Practice Approval" @bind-Value="Model.OnlinePracticeApproval"
+                Help="For practice requests made online, the organization requires approval." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Online Facility Approval" @bind-Value="Model.OnlineFacilityApproval"
+                Help="For facility reservations made online, the organization can require approval. This can be set later for each facility." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="External Team Practice" @bind-Value="Model.ExternalTeamPractice"
+                Help="The organization uses the External Team Practice functionality." />
+        </div>
+
+        <div class="col-12"><h3 class="jarvis-group-title">Shifts</h3></div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Use Shifts" @bind-Value="Model.UseShifts" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <label class="form-label d-block">Shift Location Type</label>
+            <RadzenDropDown TValue="string" Data="@WithCurrentValue(_shiftLocationTypeOptions, Model.ShiftLocationType)" AllowClear="true"
+                @bind-Value="Model.ShiftLocationType" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Shift Auto-End at Midnight" @bind-Value="Model.ShiftAutoendMidnight" />
+        </div>
+    </div>
+</FormCard>
+
+<FormCard Title="Applications" Icon="assignment_ind" Description="Coach and volunteer applications, and the background check that goes with them.">
+    <div class="row g-3">
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Online Applications" Value="@Model.OnlineApplications" ValueChanged="@OnOnlineApplicationsChanged"
+                Help="Rare, but some organizations do not take online applications." />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Coach Applications" @bind-Value="Model.CoachApplications" />
+        </div>
+        <div class="col-sm-6 col-lg-4 col-xl-3">
+            <ToggleField Label="Volunteer Applications" @bind-Value="Model.VolunteerApplications" />
+        </div>
+        <div class="col-lg-6">
+            <label class="form-label d-block">Background Check URL</label>
+            <RadzenTextBox @bind-Value="Model.BackgroundCheckUrl" MaxLength="100" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+<FormCard Title="Billing Settings" Icon="payments" Description="What Jarvis bills the organization, and how card payments and fees work.">
+    <div class="row g-3">
+        <div class="col-12"><h3 class="jarvis-group-title">Jarvis Billing</h3></div>
+        <div class="col-sm-6 col-lg-2">
+            <label class="form-label d-block">Monthly Billed Amount</label>
+            <RadzenNumeric TValue="decimal" @bind-Value="Model.MonthlyBilledAmount" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Payment Gateway</label>
+            <RadzenDropDown TValue="string" Data="@WithCurrentValue(_gatewayOptions, Model.GatewayUsed)" TextProperty="Text" ValueProperty="Value"
+                @bind-Value="Model.GatewayUsed" class="w-100" />
+        </div>
+        @if (Model.OrganizationKey != 0)
+        {
+            @* Legacy per-item pricing: no longer used for new organizations, so only shown when updating an
+               existing one that may still have these set. *@
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label d-block">League Mgmt Price</label>
+                <RadzenNumeric TValue="decimal" @bind-Value="Model.LeagueMgmtPrice" class="w-100" />
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label d-block">Activity Price</label>
+                <RadzenNumeric TValue="decimal" @bind-Value="Model.ActivityPrice" class="w-100" />
+            </div>
+            <div class="col-sm-6 col-lg-2">
+                <label class="form-label d-block">Team Price</label>
+                <RadzenNumeric TValue="decimal" @bind-Value="Model.TeamPrice" class="w-100" />
+            </div>
+        }
+
+        <div class="col-12"><h3 class="jarvis-group-title">Card Payments</h3></div>
+        @if (Model.OrganizationKey != 0)
+        {
+            @* Legacy setting only one existing organization still relies on, so it's not offered for new ones. *@
+            <div class="col-sm-6 col-lg-3">
+                <ToggleField Label="Allow Online Payment" @bind-Value="Model.PayOnline" />
+            </div>
+        }
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Swipe Machine" @bind-Value="Model.SwipeMachine"
+                Help="Used for legacy customers that have a separate site to go to in order to swipe." />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Use EMV Terminal" @bind-Value="Model.UseEmvterminal"
+                Help="Must be selected to enter Valor information, and so the system knows EMV terminals are involved." />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Allow American Express" @bind-Value="Model.AllowAmex" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <ToggleField Label="Allow Discover" @bind-Value="Model.AllowDisc" />
+        </div>
+
+        @* DailyPercentage and the Membership* fee columns are no longer used, so they aren't shown; an Update
+           leaves an existing organization's values unchanged. *@
+        <div class="col-12"><h3 class="jarvis-group-title">Convenience Fees</h3></div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Merchant % to Registrant <HelpTip Text="Use format 0.0300 for 3%, for example." /></label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="Model.MerchantPctToRegistrant" ShowUpDown="false" Format="0.0000" Min="0" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Swipe % to Registrant <HelpTip Text="Use format 0.0300 for 3%, for example." /></label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="Model.SwipePctToRegistrant" ShowUpDown="false" Format="0.0000" Min="0" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Minimum Convenience Fee <HelpTip Text="If the computed convenience fee is less than this amount, the minimum will be charged." /></label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="Model.MinimumConvenienceFee" ShowUpDown="false" Format="0.00" Min="0" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+@* The finance system columns (Tyler/Caselle, Feed/Batch Cash/Checks, GL/OR Revenue Code) are no longer used, so
+   they aren't shown; new organizations save them off/empty and an Update leaves existing values unchanged. *@
+<FormCard Title="Sales Tax" Icon="percent" Description="Sales tax rates charged on facilities, POS sales, season passes and registrations.">
+    <div class="row g-3">
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Facility Sales Tax % <HelpTip Text="Enter as 0.0875, for example, for an 8.75% sales tax." /></label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="Model.FacilitySalesTax" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">POS Sales Tax % <HelpTip Text="Enter as 0.0875, for example, for an 8.75% sales tax." /></label>
+            <RadzenNumeric TValue="decimal" @bind-Value="Model.PossalesTax" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Season Pass Sales Tax % <HelpTip Text="Enter as 0.0875, for example, for an 8.75% sales tax." /></label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="Model.SeasonPassSalesTax" class="w-100" />
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <label class="form-label d-block">Registration Sales Tax % <HelpTip Text="Enter as 0.0875, for example, for an 8.75% sales tax." /></label>
+            <RadzenNumeric TValue="decimal?" @bind-Value="Model.RegistrationSalesTax" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+@* Only the website paths are still entered here. The other file columns (FeeScheduleFile, PaymentFile,
+   ServiceAgreementFile, EditorCSSFile) and the agreement text/acceptance columns are no longer used or are
+   handled in Jarvis itself, so they aren't shown; new organizations save them empty/off and an Update leaves
+   existing values unchanged. *@
+<FormCard Title="Website Paths" Icon="folder" Collapsible="true" StartCollapsed="true"
+    Description="Where the organization's images and documents are kept on the website.">
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label d-block">Image Editor Path</label>
+            <RadzenTextBox @bind-Value="Model.ImageEditorPath" MaxLength="50" class="w-100" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label d-block">Document Path</label>
+            <RadzenTextBox @bind-Value="Model.DocumentPath" MaxLength="100" class="w-100" />
+        </div>
+    </div>
+</FormCard>
+
+@code {
+    private sealed record TextOption(string Text, string Value);
+    private sealed record TimeZoneOption(string Text, int Value);
+
+    private static readonly List<TextOption> _statusOptions =
+    [
+        new("Active", "A"),
+        new("Inactive", "I"),
+    ];
+
+    // TimeZone is an offset index used throughout the legacy Jarvis stored procedures
+    // (1=Eastern, 2=Central, 3=Mountain, 4=Pacific), not a raw UTC offset.
+    private static readonly List<TimeZoneOption> _timeZoneOptions =
+    [
+        new("Eastern", 1),
+        new("Central", 2),
+        new("Mountain", 3),
+        new("Pacific", 4),
+    ];
+
+    private static readonly List<TextOption> _gatewayOptions =
+    [
+        new("AuthorizeNET", "AuthorizeNET"),
+        new("MXGateway", "MXGateway"),
+    ];
+
+    private static readonly List<string> _shiftLocationTypeOptions = ["Single", "Multiple"];
+    private static readonly List<string> _standingsTypeOptions = ["Head", "Points"];
+    private static readonly List<string> _feeStructureOptions = ["Neither", OrganizationService.ResidentFeeStructure];
+
+    // An existing organization may hold a value saved before these dropdowns limited the choices; adding it to the
+    // list keeps it visible on Update (instead of a blank dropdown) until someone picks a standard one.
+    private static List<string> WithCurrentValue(List<string> options, string? current) =>
+        string.IsNullOrWhiteSpace(current) || options.Contains(current) ? options : [.. options, current];
+
+    private static List<TextOption> WithCurrentValue(List<TextOption> options, string? current) =>
+        string.IsNullOrWhiteSpace(current) || options.Any(o => o.Value == current) ? options : [.. options, new(current, current)];
+
+    private bool IsResident => Model.FeeStructure == OrganizationService.ResidentFeeStructure;
+
+    // Coach and volunteer applications are taken online, so turning online applications off turns both off.
+    private void OnOnlineApplicationsChanged(bool value)
+    {
+        Model.OnlineApplications = value;
+        if (!value)
+        {
+            Model.CoachApplications = false;
+            Model.VolunteerApplications = false;
+        }
+    }
+
+    private void OnFeeStructureChanged(string value)
+    {
+        Model.FeeStructure = value;
+        if (!IsResident)
+        {
+            Model.ValidateResidencyByAddr = false;
+            Model.ValidateResidencyByZip = false;
+        }
+    }
+
+    [Parameter, EditorRequired]
+    public Organization Model { get; set; } = default!;
+}

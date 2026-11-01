@@ -1,9 +1,10 @@
 <nav class="jarvis-nav">
     <NavLink href="dashboard" class="jarvis-nav-link" Match="NavLinkMatch.All">Dashboard</NavLink>
     <div class="jarvis-nav-dropdown">
-        <span class="jarvis-nav-link" tabindex="0">New Organization</span>
+        <span class="jarvis-nav-link" tabindex="0">Organizations</span>
         <div class="jarvis-nav-dropdown-menu">
             <NavLink href="organizations/add" class="jarvis-nav-dropdown-item">Add Organization</NavLink>
+            <NavLink href="organizations/update" class="jarvis-nav-dropdown-item">Update Organization</NavLink>
         </div>
     </div>
     <div class="jarvis-nav-dropdown">
@@ -18,6 +19,8 @@
         <div class="jarvis-nav-dropdown-menu">
             <NavLink href="mxreconciliation" class="jarvis-nav-dropdown-item">Reconciliation</NavLink>
             <NavLink href="mxcustomervaultlookup" class="jarvis-nav-dropdown-item">Vault Lookup</NavLink>
+            <NavLink href="mxreconciliation/add-payment" class="jarvis-nav-dropdown-item" Match="NavLinkMatch.All">Add Payment/Refund</NavLink>
+            <NavLink href="paymentsearch" class="jarvis-nav-dropdown-item">Payment Search</NavLink>
         </div>
     </div>
 </nav>

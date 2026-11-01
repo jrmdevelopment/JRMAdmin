@@ -1,0 +1,52 @@
+@* A titled card that groups related form fields, with an icon and a one-line description in its header.
+   Collapsible cards show a Show/Hide button and can start collapsed for rarely-used sections. *@
+
+<section class="jarvis-card">
+    <div class="jarvis-card-header">
+        <span class="jarvis-card-icon" aria-hidden="true"><RadzenIcon Icon="@Icon" /></span>
+        <div class="jarvis-card-heading">
+            <h2 class="jarvis-card-title">@Title</h2>
+            @if (!string.IsNullOrEmpty(Description))
+            {
+                <p class="jarvis-card-subtitle">@Description</p>
+            }
+        </div>
+        @if (Collapsible)
+        {
+            <button type="button" class="jarvis-card-toggle" aria-expanded="@(_collapsed ? "false" : "true")" @onclick="() => _collapsed = !_collapsed">
+                @(_collapsed ? "Show" : "Hide")
+                <RadzenIcon Icon="@(_collapsed ? "expand_more" : "expand_less")" />
+            </button>
+        }
+    </div>
+    @if (!_collapsed)
+    {
+        <div class="jarvis-card-body">
+            @ChildContent
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = "";
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public bool Collapsible { get; set; }
+
+    [Parameter]
+    public bool StartCollapsed { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private bool _collapsed;
+
+    protected override void OnInitialized() => _collapsed = Collapsible && StartCollapsed;
+}

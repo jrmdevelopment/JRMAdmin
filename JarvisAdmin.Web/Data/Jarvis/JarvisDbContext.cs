@@ -6999,6 +6999,9 @@ public partial class JarvisDbContext : DbContext
                 .HasMaxLength(12)
                 .IsUnicode(false)
                 .IsFixedLength();
+            entity.Property(e => e.ReportLogo)
+                .HasMaxLength(50)
+                .IsUnicode(false);
             entity.Property(e => e.SeasonPassSalesTax).HasColumnType("decimal(18, 4)");
             entity.Property(e => e.ServiceAgreementFile)
                 .HasMaxLength(50)
@@ -7587,6 +7590,9 @@ public partial class JarvisDbContext : DbContext
             entity.Property(e => e.Nsffee)
                 .HasColumnType("decimal(18, 2)")
                 .HasColumnName("NSFFee");
+            entity.Property(e => e.MerchantBatchId)
+                .HasMaxLength(10)
+                .IsUnicode(false);
             entity.Property(e => e.PaymentAmount).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.PaymentComments).HasColumnType("text");
             entity.Property(e => e.PaymentDate).HasColumnType("datetime");
@@ -7702,7 +7708,12 @@ public partial class JarvisDbContext : DbContext
         {
             entity.HasKey(e => e.PaymentSeasonPassKey);
 
-            entity.ToTable("PaymentSeasonPass");
+            entity.ToTable("PaymentSeasonPass", tb =>
+                {
+                    tb.HasTrigger("PaymentSeasonPass_DeleteTrg");
+                    tb.HasTrigger("PaymentSeasonPass_InsertTrg");
+                    tb.HasTrigger("PaymentSeasonPass_UpdateTrg");
+                });
 
             entity.Property(e => e.Ccexpiration)
                 .HasMaxLength(25)
@@ -9388,7 +9399,12 @@ public partial class JarvisDbContext : DbContext
         {
             entity.HasKey(e => e.SeasonPassKey);
 
-            entity.ToTable("SeasonPass");
+            entity.ToTable("SeasonPass", tb =>
+                {
+                    tb.HasTrigger("SeasonPass_DeleteTrg");
+                    tb.HasTrigger("SeasonPass_InsertTrg");
+                    tb.HasTrigger("SeasonPass_UpdateTrg");
+                });
 
             entity.HasIndex(e => e.AccountKey, "IX_SeasonPass_Account");
 
@@ -9510,7 +9526,12 @@ public partial class JarvisDbContext : DbContext
         {
             entity.HasKey(e => e.SeasonPassAddOnKey);
 
-            entity.ToTable("SeasonPassAddOn");
+            entity.ToTable("SeasonPassAddOn", tb =>
+                {
+                    tb.HasTrigger("SeasonPassAddOn_DeleteTrg");
+                    tb.HasTrigger("SeasonPassAddOn_InsertTrg");
+                    tb.HasTrigger("SeasonPassAddOn_UpdateTrg");
+                });
 
             entity.Property(e => e.AddOnName)
                 .HasMaxLength(50)
@@ -9556,7 +9577,7 @@ public partial class JarvisDbContext : DbContext
         {
             entity.HasKey(e => e.SeasonPassCheckinKey);
 
-            entity.ToTable("SeasonPassCheckin");
+            entity.ToTable("SeasonPassCheckin", tb => tb.HasTrigger("SeasonPassCheckin_DeleteTrg"));
 
             entity.Property(e => e.BarcodeNumber)
                 .HasMaxLength(50)
@@ -9582,7 +9603,12 @@ public partial class JarvisDbContext : DbContext
         {
             entity.HasKey(e => e.SeasonPassIdKey);
 
-            entity.ToTable("SeasonPassId");
+            entity.ToTable("SeasonPassId", tb =>
+                {
+                    tb.HasTrigger("SeasonPassId_DeleteTrg");
+                    tb.HasTrigger("SeasonPassId_InsertTrg");
+                    tb.HasTrigger("SeasonPassId_UpdateTrg");
+                });
 
             entity.HasIndex(e => new { e.OrganizationKey, e.SeasonPassKey }, "IX_SeasonPassId_Org_Pass");
 

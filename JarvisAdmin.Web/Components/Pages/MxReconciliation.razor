@@ -4,6 +4,8 @@
 @inject MxPaymentLookupService MxLookupService
 @inject EmvLogAnalysisService EmvLogService
 @inject DialogService DialogService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>MX Reconciliation - Jarvis Admin</PageTitle>
 
@@ -65,6 +67,17 @@ else if (_selectedTabIndex == 3)
         </div>
         <div class="col-auto">
             <RadzenButton Text="Search" Click="@SearchMxLookupAsync" ButtonStyle="ButtonStyle.Primary" />
+        </div>
+        <div class="col-auto">
+            @* The Jarvis side of the same reference nbr, in Payment Search (new browser tab). *@
+            <RadzenButton Text="Find in Jarvis" Icon="open_in_new" ButtonStyle="ButtonStyle.Secondary"
+                Disabled="@(_mxLookupOrgKey is null || string.IsNullOrWhiteSpace(_mxLookupReferenceNbr))"
+                Click="@(() => JS.InvokeVoidAsync("open", PaymentSearchUrl(_mxLookupOrgKey, _mxLookupReferenceNbr.Trim()), "_blank"))" />
+        </div>
+        <div class="col-auto">
+            @* For a payment/refund that isn't in MX yet (e.g. a refund done in MX today, before its batch closes). *@
+            <RadzenButton Text="Add Payment/Refund Manually" Icon="edit_note" ButtonStyle="ButtonStyle.Secondary"
+                Click="@(() => Navigation.NavigateTo(_mxLookupOrgKey is { } org ? $"mxreconciliation/add-payment?org={org}" : "mxreconciliation/add-payment"))" />
         </div>
     </div>
 }
@@ -234,7 +247,7 @@ else if (_selectedTabIndex == 4)
                                     <Columns>
                                         <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
                                             <Template Context="row">
-                                                <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                                <a href="@PaymentSearchUrl(_ccOrgKey, row.ReferenceNbr)" target="_blank" title="Find in Jarvis (opens Payment Search)">@row.ReferenceNbr</a>
                                             </Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Credit Card Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
@@ -246,7 +259,11 @@ else if (_selectedTabIndex == 4)
                                 <RadzenDataGrid Data="@_ccComparison.Mismatched" TItem="VarianceRow" AllowSorting="true"
                                     AllowPaging="true" PageSize="10" EmptyText="None">
                                     <Columns>
-                                        <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr" />
+                                        <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
+                                            <Template Context="row">
+                                                <a href="@PaymentSearchUrl(_ccOrgKey, row.ReferenceNbr)" target="_blank" title="Find in Jarvis (opens Payment Search)">@row.ReferenceNbr</a>
+                                            </Template>
+                                        </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="VarianceRow" Property="MxAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
                                         <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Credit Card Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
                                     </Columns>
@@ -262,7 +279,7 @@ else if (_selectedTabIndex == 4)
                             <Columns>
                                 <RadzenDataGridColumn TItem="SplitVarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
                                     <Template Context="row">
-                                        <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                        <a href="@PaymentSearchUrl(_ccOrgKey, row.ReferenceNbr)" target="_blank" title="Find in Jarvis (opens Payment Search)">@row.ReferenceNbr</a>
                                     </Template>
                                 </RadzenDataGridColumn>
                                 <RadzenDataGridColumn TItem="SplitVarianceRow" Property="MxPrincipal" Title="MX Principal" FormatString="{0:C}" TextAlign="TextAlign.Right" />
@@ -310,6 +327,8 @@ else if (_selectedTabIndex == 4)
                         {
                             <RadzenButton Text="Analyze in EMV Logs" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
                                 Click="@(() => GoToEmvLogsAsync(result))" />
+                            <RadzenButton Text="Add Payment in Jarvis" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small"
+                                Click="@(() => GoToAddPayment(result))" />
                         }
                     </h6>
                     @if (result.ErrorMessage is not null)
@@ -452,7 +471,7 @@ else if (_selectedTabIndex == 4)
                         <Columns>
                             <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
                                 <Template Context="row">
-                                    <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                    <a href="@PaymentSearchUrl(_selectedVarianceBatch?.OrganizationKey, row.ReferenceNbr)" target="_blank" title="Find in Jarvis (opens Payment Search)">@row.ReferenceNbr</a>
                                 </Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="VarianceRow" Property="JarvisAmount" Title="Jarvis Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
@@ -466,7 +485,7 @@ else if (_selectedTabIndex == 4)
                         <Columns>
                             <RadzenDataGridColumn TItem="VarianceRow" Property="ReferenceNbr" Title="Reference Nbr">
                                 <Template Context="row">
-                                    <span class="text-primary" style="cursor:pointer; text-decoration:underline;" @onclick="@(() => ShowReferenceNbrDetailAsync(row.ReferenceNbr))">@row.ReferenceNbr</span>
+                                    <a href="@PaymentSearchUrl(_selectedVarianceBatch?.OrganizationKey, row.ReferenceNbr)" target="_blank" title="Find in Jarvis (opens Payment Search)">@row.ReferenceNbr</a>
                                 </Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="VarianceRow" Property="MxAmount" Title="MX Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
@@ -475,31 +494,6 @@ else if (_selectedTabIndex == 4)
                     </RadzenDataGrid>
                 </div>
             </div>
-        }
-    </div>
-}
-
-@if (_selectedReferenceNbr is not null)
-{
-    <div class="mt-4">
-        <h5>Reference Nbr Detail - @_selectedReferenceNbr</h5>
-        @if (_referenceNbrLoading)
-        {
-            <p class="text-muted">Loading...</p>
-        }
-        else if (_referenceNbrDetail is not null)
-        {
-            <RadzenDataGrid Data="@_referenceNbrDetail" TItem="ReferenceNbrDetailRow" AllowSorting="true"
-                AllowPaging="true" PageSize="10" EmptyText="Not found in any Jarvis payment table.">
-                <Columns>
-                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="SourceTable" Title="Table" />
-                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="PaymentAmount" Title="Payment Amount" FormatString="{0:C}" TextAlign="TextAlign.Right" />
-                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="ConfirmationNbr" Title="Confirmation Nbr" />
-                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="MerchantBatchId" Title="Merchant Batch Id" />
-                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="MerchantBatchIdNum" Title="Merchant Batch Id Num" />
-                    <RadzenDataGridColumn TItem="ReferenceNbrDetailRow" Property="PaymentDate" Title="Payment Date" FormatString="{0:MM/dd/yyyy h:mm tt}" />
-                </Columns>
-            </RadzenDataGrid>
         }
     </div>
 }
@@ -531,10 +525,6 @@ else if (_selectedTabIndex == 4)
     private bool _refreshingAllBatches;
     private int _refreshAllProgress;
     private int _refreshAllTotal;
-
-    private string? _selectedReferenceNbr;
-    private List<ReferenceNbrDetailRow>? _referenceNbrDetail;
-    private bool _referenceNbrLoading;
 
     private int? _ccOrgKey;
     private DateTime? _ccDate = DateTime.Today;
@@ -632,8 +622,6 @@ else if (_selectedTabIndex == 4)
         _blankMerchantIdLoading = true;
         _selectedVarianceBatch = null;
         _varianceDetail = null;
-        _selectedReferenceNbr = null;
-        _referenceNbrDetail = null;
 
         var filter = new MxReconciliationFilter(
             SelectedOrgKeys,
@@ -655,8 +643,6 @@ else if (_selectedTabIndex == 4)
         _selectedTabIndex = index;
         _selectedVarianceBatch = null;
         _varianceDetail = null;
-        _selectedReferenceNbr = null;
-        _referenceNbrDetail = null;
 
         if (index == 2 && !_ccFilterInitialized)
         {
@@ -770,18 +756,28 @@ else if (_selectedTabIndex == 4)
 
         _mxLookupLoading = true;
 
-        var paymentIds = await MxLookupService.GetPaymentIdsAsync(_mxLookupOrgKey.Value, _mxLookupReferenceNbr.Trim());
-        if (paymentIds.Count == 0)
+        // Shown on the tab rather than crashing the whole page: this reads the org's encrypted MX keys and calls
+        // the MX API, either of which can fail for one organization or payment.
+        try
         {
-            _mxLookupError = "No MxmerchantBatchTxn row with a PaymentId was found for that organization/Reference Nbr.";
-            _mxLookupLoading = false;
-            return;
+            var paymentIds = await MxLookupService.GetPaymentIdsAsync(_mxLookupOrgKey.Value, _mxLookupReferenceNbr.Trim());
+            if (paymentIds.Count == 0)
+            {
+                _mxLookupError = "No MxmerchantBatchTxn row with a PaymentId was found for that organization/Reference Nbr.";
+                return;
+            }
+
+            foreach (var paymentId in paymentIds)
+                _mxLookupResults.Add(await MxLookupService.LookupPaymentAsync(_mxLookupOrgKey.Value, paymentId));
         }
-
-        foreach (var paymentId in paymentIds)
-            _mxLookupResults.Add(await MxLookupService.LookupPaymentAsync(_mxLookupOrgKey.Value, paymentId));
-
-        _mxLookupLoading = false;
+        catch (Exception ex)
+        {
+            _mxLookupError = $"MX Lookup failed: {ex.GetType().Name}: {ex.GetBaseException().Message}";
+        }
+        finally
+        {
+            _mxLookupLoading = false;
+        }
     }
 
     // For a payment that is in MX but not in Jarvis: confirms Jarvis has no payment row for the
@@ -915,7 +911,8 @@ else if (_selectedTabIndex == 4)
                     </RadzenDataGrid>
                 }
                 <div class="d-flex justify-content-end gap-2 mt-3">
-                    @if (detail is not null)
+                    @* Not offered again once the payment has been inserted: this reopened pop-up is the confirmation. *@
+                    @if (detail is not null && message is null)
                     {
                         <RadzenButton Text="Insert Payment" ButtonStyle="ButtonStyle.Primary" Click="@(() => ds.Close("insert"))" />
                     }
@@ -992,21 +989,13 @@ else if (_selectedTabIndex == 4)
         _ccComparisonLoading = false;
     }
 
-    private async Task ShowReferenceNbrDetailAsync(string referenceNbr)
-    {
-        _selectedReferenceNbr = referenceNbr;
-        _referenceNbrLoading = true;
+    // Jarvis-side reference nbr links open Payment Search for the organization and reference nbr, in a new browser
+    // tab so this page keeps its filters and selected batch.
+    private static string PaymentSearchUrl(int? organizationKey, string referenceNbr)
+        => organizationKey is { } org
+            ? $"paymentsearch?org={org}&ref={Uri.EscapeDataString(referenceNbr)}"
+            : $"paymentsearch?ref={Uri.EscapeDataString(referenceNbr)}";
 
-        _referenceNbrDetail = await MxService.GetReferenceNbrDetailAsync(referenceNbr);
-
-        _referenceNbrLoading = false;
-    }
-
-    // A batch summary variance row "In MX Only" has nothing stamped on the Jarvis side (that's exactly
-    // what "MX Only" means), so send the user to MX Lookup and run the MX-side search immediately using
-    // this batch's organization. Also run the same all-payment-tables Jarvis search used elsewhere on
-    // this page (ShowReferenceNbrDetailAsync) and show it at the bottom - an "MX Only" reference nbr
-    // often does have Jarvis rows (e.g. an unstamped split payment), just none stamped with this batch.
     // MX Lookup -> EMV Logs: prefills the EMV Logs filters from the MX payment being shown - organization
     // and reference # from the lookup, amount from MX's "amount" (else the MX batch transaction), and
     // date/time from MX's "created" (UTC) converted to Central. The user then clicks Analyze.
@@ -1055,9 +1044,22 @@ else if (_selectedTabIndex == 4)
         _emvFilterInitialized = true;
         _selectedTabIndex = 4;
         _selectedVarianceBatch = null;
-        _selectedReferenceNbr = null;
     }
 
+    // Opens the Add Payment in Jarvis page for an MX payment Jarvis never recorded; it reloads the MX payment itself.
+    private void GoToAddPayment(MxPaymentLookupResult result)
+    {
+        if (!_mxLookupOrgKey.HasValue)
+            return;
+
+        Navigation.NavigateTo($"mxreconciliation/add-payment?org={_mxLookupOrgKey.Value}" +
+            $"&ref={Uri.EscapeDataString(_mxLookupReferenceNbr.Trim())}&paymentId={Uri.EscapeDataString(result.PaymentId)}");
+    }
+
+    // A batch summary variance row "In MX Only" has nothing stamped on the Jarvis side (that's exactly what
+    // "MX Only" means), so send the user to MX Lookup and run the MX-side search immediately using this batch's
+    // organization. Each MX result there has a "Find in Jarvis" link to Payment Search - an "MX Only" reference
+    // nbr often does have Jarvis rows (e.g. an unstamped split payment), just none stamped with this batch.
     private async Task GoToMxLookupAsync(string referenceNbr)
     {
         if (_selectedVarianceBatch is null)
@@ -1069,6 +1071,5 @@ else if (_selectedTabIndex == 4)
         _selectedTabIndex = 3;
 
         await SearchMxLookupAsync();
-        await ShowReferenceNbrDetailAsync(referenceNbr);
     }
 }

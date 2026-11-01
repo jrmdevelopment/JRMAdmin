@@ -1,0 +1,167 @@
+@page "/paymentsearch"
+@using JarvisAdmin.Web.Services
+@inject PaymentSearchService SearchService
+@inject OrganizationService OrgService
+@inject NavigationManager Navigation
+
+@* Finds an organization's reference (registration) number in every Jarvis payment table. ?org=...&ref=... in the
+   address runs the search straight away, so a result can be linked to or bookmarked. *@
+
+<PageTitle>Payment Search - Jarvis Admin</PageTitle>
+
+<div class="jarvis-page-header">
+    <h1>Payment Search</h1>
+    <p>Find an organization's reference number (Registration Nbr) in every Jarvis payment table.</p>
+</div>
+
+<FormCard Title="Search" Icon="search" Description="Choose the organization, then enter the MX reference number exactly as it appears in MX.">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-6 col-lg-4">
+            <label class="form-label d-block">Organization <span class="text-danger">*</span></label>
+            <RadzenDropDown TValue="int?" Data="@_organizations" TextProperty="DisplayName" ValueProperty="OrganizationKey"
+                @bind-Value="_orgKey" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                FilterOperator="StringFilterOperator.Contains" Placeholder="Select an organization..." class="w-100" />
+        </div>
+        <div class="col-sm-8 col-md-4 col-lg-3">
+            <label class="form-label d-block">Registration Nbr <span class="text-danger">*</span></label>
+            <RadzenTextBox @bind-Value="_referenceNbr" MaxLength="50" Placeholder="e.g. 612345678901" class="w-100"
+                @onkeydown="@OnKeyDown" Immediate="true" />
+        </div>
+        <div class="col-auto">
+            <RadzenButton Text="Search" Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@SearchAsync"
+                IsBusy="@_searching" Disabled="@(_orgKey is null || string.IsNullOrWhiteSpace(_referenceNbr))" />
+        </div>
+    </div>
+</FormCard>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_searched is { } searched)
+{
+    <FormCard Title="@($"Results for {searched.ReferenceNbr}")" Icon="receipt_long"
+        Description="@(_results.Count == 0
+            ? $"No Jarvis payment table has this reference number for {searched.OrganizationName}."
+            : $"{searched.OrganizationName}: {_results.Count} row(s) in {_results.Select(r => r.SourceTable).Distinct().Count()} table(s), totaling {_results.Sum(r => r.PaymentAmount):C}.")">
+        @if (_results.Count > 0)
+        {
+            <RadzenDataGrid Data="@_results" TItem="PaymentSearchRow" AllowSorting="true" AllowFiltering="true"
+                AllowPaging="true" PageSize="25" PageSizeOptions="@(new[] { 25, 50, 100 })">
+                <Columns>
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="SourceTable" Title="Table" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="RowKey" Title="Key" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="ParentKey" Title="Belongs To">
+                        <Template Context="row">
+                            @if (row.ParentKey is { } key)
+                            {
+                                <span>@row.ParentLabel <strong>@key</strong></span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="PaymentDate" Title="Date" FormatString="{0:MM/dd/yyyy h:mm tt}" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="PaymentAmount" Title="Amount" TextAlign="TextAlign.Right">
+                        <Template Context="row">
+                            <span class="@(row.PaymentAmount < 0 ? "text-danger" : null)">@row.PaymentAmount.ToString("C")</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="PaymentType" Title="Type" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="ConfirmationNbr" Title="Confirmation Nbr" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="PostedBy" Title="Posted By" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="MerchantBatchId" Title="Merchant Batch Id" />
+                    <RadzenDataGridColumn TItem="PaymentSearchRow" Property="MerchantBatchIdNum" Title="Merchant Batch Id Num" />
+                </Columns>
+            </RadzenDataGrid>
+        }
+    </FormCard>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "org")]
+    public int? Org { get; set; }
+
+    [SupplyParameterFromQuery(Name = "ref")]
+    public string? Ref { get; set; }
+
+    private sealed record SearchedFor(int OrganizationKey, string OrganizationName, string ReferenceNbr);
+
+    private List<OrganizationListItem> _organizations = [];
+    private int? _orgKey;
+    private string _referenceNbr = "";
+    private SearchedFor? _searched;
+    private bool _searching;
+    private string? _error;
+    private List<PaymentSearchRow> _results = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _organizations = await OrgService.GetOrganizationListAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"The organizations could not be loaded: {ex.GetBaseException().Message}";
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A reference nbr without an organization (e.g. from an all-organizations view) is filled in, ready for
+        // the user to pick the organization and search.
+        if (Org is null && !string.IsNullOrWhiteSpace(Ref) && _searched is null)
+            _referenceNbr = Ref.Trim();
+
+        if (Org is { } org && !string.IsNullOrWhiteSpace(Ref)
+            && (_searched is null || _searched.OrganizationKey != org || _searched.ReferenceNbr != Ref.Trim()))
+        {
+            _orgKey = org;
+            _referenceNbr = Ref.Trim();
+            await RunSearchAsync();
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "NumpadEnter")
+            await SearchAsync();
+    }
+
+    // Puts the organization and reference number in the address (so the results can be bookmarked or shared);
+    // OnParametersSetAsync then runs the search. Searching the same thing again just re-runs it.
+    private async Task SearchAsync()
+    {
+        var nbr = _referenceNbr.Trim();
+        if (_orgKey is not { } org || nbr.Length == 0 || _searching)
+            return;
+
+        if (_searched is not null && _searched.OrganizationKey == org && _searched.ReferenceNbr == nbr)
+            await RunSearchAsync();
+        else
+            Navigation.NavigateTo($"paymentsearch?org={org}&ref={Uri.EscapeDataString(nbr)}");
+    }
+
+    private async Task RunSearchAsync()
+    {
+        if (_orgKey is not { } org)
+            return;
+
+        _searching = true;
+        _error = null;
+        try
+        {
+            var nbr = _referenceNbr.Trim();
+            _results = await SearchService.SearchByReferenceNbrAsync(org, nbr);
+            var name = _organizations.FirstOrDefault(o => o.OrganizationKey == org)?.DisplayName ?? $"Organization {org}";
+            _searched = new SearchedFor(org, name, nbr);
+        }
+        catch (Exception ex)
+        {
+            _error = $"The search failed: {ex.GetBaseException().Message}";
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+}

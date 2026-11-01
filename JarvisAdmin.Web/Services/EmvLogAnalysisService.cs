@@ -124,6 +124,9 @@ public class EmvLogAnalysisService(IConfiguration configuration, IWebHostEnviron
 
     private EmvAnalysisResult Analyze(int organizationKey, DateTime enteredInZone, string? enteredTimeZoneId, decimal amount, string referenceNbr, IReadOnlyList<ReferenceNbrDetailRow> jarvisRows)
     {
+        // On the server these are the main Jarvis site's own logs, which it writes to different folders:
+        // ~/App_Data/Logs/paymentservice.log and ~/App_Data/Logs/posregister/posregister.log. So Folder is that
+        // site's App_Data\Logs, and each log name may include a subfolder (or be a full path of its own).
         var folder = configuration["EmvLogs:Folder"] ?? "JarvisData/EMVLogs";
         if (!Path.IsPathRooted(folder))
             folder = Path.Combine(environment.ContentRootPath, folder);
@@ -131,12 +134,25 @@ public class EmvLogAnalysisService(IConfiguration configuration, IWebHostEnviron
         var paymentServicePath = Path.Combine(folder, configuration["EmvLogs:PaymentServiceLog"] ?? "paymentservice.log");
         var posRegisterPath = Path.Combine(folder, configuration["EmvLogs:PosRegisterLog"] ?? "posregister.log");
 
-        var missing = new[] { paymentServicePath, posRegisterPath }.Where(p => !File.Exists(p)).ToList();
-        if (missing.Count > 0)
-            return new EmvAnalysisResult($"Log file not found: {string.Join(", ", missing)}", null, [], []);
-
-        var paymentEntries = ReadLog(paymentServicePath, PaymentServiceLogName);
-        var registerEntries = ReadLog(posRegisterPath, PosRegisterLogName);
+        List<LogEntry> paymentEntries, registerEntries;
+        try
+        {
+            paymentEntries = ReadLog(paymentServicePath, PaymentServiceLogName);
+            registerEntries = ReadLog(posRegisterPath, PosRegisterLogName);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new EmvAnalysisResult($"Log file not found: {ex.Message}", null, [], []);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            // Usually the main Jarvis site's App_Data folder not granting read access to this site's app pool.
+            return new EmvAnalysisResult($"This site isn't allowed to read the log file: {ex.Message}", null, [], []);
+        }
+        catch (IOException ex)
+        {
+            return new EmvAnalysisResult($"The log file couldn't be read: {ex.Message}", null, [], []);
+        }
 
         var allAttempts = ParsePaymentService(paymentEntries);
         var allSales = ParseRegister(registerEntries);

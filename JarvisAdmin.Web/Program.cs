@@ -66,6 +66,8 @@ builder.Services.AddScoped<JarvisDbContext>(sp =>
     sp.GetRequiredService<IDbContextFactory<JarvisDbContext>>().CreateDbContext());
 
 builder.Services.AddScoped<MxReconciliationService>();
+builder.Services.AddScoped<JarvisPaymentInsertService>();
+builder.Services.AddScoped<PaymentSearchService>();
 builder.Services.AddScoped<EmvLogAnalysisService>();
 builder.Services.AddScoped<DatabaseChecksService>();
 builder.Services.AddScoped<OrganizationService>();

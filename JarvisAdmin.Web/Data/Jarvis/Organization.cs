@@ -58,8 +58,6 @@ public partial class Organization
     /// </summary>
     public string? ShiftLocationType { get; set; }
 
-    public bool AutoReopenFields { get; set; }
-
     public bool UseMembershipSystem { get; set; }
 
     public bool UseSeasonPassSystem { get; set; }
@@ -92,6 +90,9 @@ public partial class Organization
 
     public bool OnlineSeasonPass { get; set; }
 
+    // No longer shown on the form and the column is being dropped. It stays mapped until then because it's
+    // NOT NULL with no DEFAULT, so inserts must supply it (true - see CreateNewOrganization). Remove this property
+    // when the column is dropped.
     public bool SeasonPassAccount { get; set; }
 
     public bool ValidateResidencyByAddr { get; set; }
@@ -222,6 +223,8 @@ public partial class Organization
 
     public string? ReportPhone { get; set; }
 
+    public string? ReportLogo { get; set; }
+
     public bool ShiftAutoendMidnight { get; set; }
 
     public decimal? SeasonPassSalesTax { get; set; }
@@ -229,6 +232,8 @@ public partial class Organization
     public decimal? RegistrationSalesTax { get; set; }
 
     public string? AccountCreditRevenueCode { get; set; }
+
+    public bool LockBirthdate { get; set; }
 
     public virtual ICollection<AccountAftercare> AccountAftercares { get; set; } = new List<AccountAftercare>();
 
